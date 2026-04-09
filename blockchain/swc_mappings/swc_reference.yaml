@@ -1,0 +1,108 @@
+# Smart Contract Weakness Classification (SWC) Reference
+# ========================================================
+# Selected SWC entries relevant to common smart contract security reviews.
+# Full registry: https://swcregistry.io/
+# This file is for DEFENSIVE review and educational use only.
+
+swc_entries:
+  - id: SWC-100
+    title: "Function Default Visibility"
+    severity: medium
+    description: "Functions that do not specify a visibility type are public by default"
+    defensive_check: "Ensure all functions have explicit visibility modifiers"
+
+  - id: SWC-101
+    title: "Integer Overflow and Underflow"
+    severity: high
+    description: "Arithmetic operations can overflow or underflow in Solidity < 0.8"
+    defensive_check: "Use Solidity >= 0.8 or SafeMath; validate arithmetic bounds"
+
+  - id: SWC-105
+    title: "Unprotected Ether Withdrawal"
+    severity: critical
+    description: "Contracts may allow unauthorized withdrawal of Ether"
+    defensive_check: "Ensure withdrawal functions have proper access controls (onlyOwner, role-based)"
+
+  - id: SWC-107
+    title: "Reentrancy"
+    severity: critical
+    description: "External calls can execute malicious code before the contract state is updated"
+    defensive_check: "Follow checks-effects-interactions pattern; use ReentrancyGuard"
+
+  - id: SWC-115
+    title: "Authorization Through tx.origin"
+    severity: high
+    description: "tx.origin should not be used for authorization"
+    defensive_check: "Use msg.sender for authorization, never tx.origin"
+
+  - id: SWC-120
+    title: "Weak Sources of Randomness from Chain Attributes"
+    severity: high
+    description: "block.timestamp, blockhash, etc. are manipulable by miners"
+    defensive_check: "Use Chainlink VRF or other commit-reveal schemes for randomness"
+
+  - id: SWC-103
+    title: "Floating Pragma"
+    severity: low
+    description: "Contracts should be deployed with the exact same compiler version they were tested with"
+    defensive_check: "Pin the Solidity version (e.g., pragma solidity 0.8.20) rather than using ^ or >"
+
+  - id: SWC-104
+    title: "Unchecked Call Return Value"
+    severity: medium
+    description: ".send() and .call() return a boolean — failure is silently ignored if unchecked"
+    defensive_check: "Always check the return value of low-level calls, or use .transfer() which reverts on failure"
+
+  - id: SWC-106
+    title: "Unprotected SELFDESTRUCT Instruction"
+    severity: critical
+    description: "A contract with an unprotected selfdestruct() can be destroyed by any caller"
+    defensive_check: "Restrict selfdestruct to trusted roles; consider removing it entirely if not required"
+
+  - id: SWC-108
+    title: "State Variable Default Visibility"
+    severity: low
+    description: "State variables default to internal visibility if not specified"
+    defensive_check: "Explicitly declare visibility for all state variables"
+
+  - id: SWC-110
+    title: "Assert Violation"
+    severity: medium
+    description: "assert() should only be used for invariants; use require() for input validation"
+    defensive_check: "Replace assert() with require() for input/state validation; reserve assert() for invariants"
+
+  - id: SWC-111
+    title: "Use of Deprecated Solidity Functions"
+    severity: medium
+    description: "suicide(), throw, block.blockhash(), sha3(), callcode(), and other deprecated functions"
+    defensive_check: "Replace deprecated functions with their modern equivalents"
+
+  - id: SWC-116
+    title: "Block values as a proxy for time"
+    severity: low
+    description: "block.timestamp and block.number can be slightly manipulated by miners"
+    defensive_check: "Accept minor timestamp imprecision for non-critical timing; avoid for randomness"
+
+  - id: SWC-119
+    title: "Shadowing State Variables"
+    severity: medium
+    description: "Local variables with the same name as state variables shadow the state variable"
+    defensive_check: "Use unique names for local variables; enable compiler warnings for shadowing"
+
+  - id: SWC-124
+    title: "Write to Arbitrary Storage Location"
+    severity: critical
+    description: "Contracts may allow attacker-controlled writes to arbitrary storage slots"
+    defensive_check: "Validate all array indices and storage offsets; avoid assembly-level storage manipulation"
+
+  - id: SWC-125
+    title: "Incorrect Inheritance Order"
+    severity: medium
+    description: "The C3-linearization order of contracts affects which function is called"
+    defensive_check: "Specify base contracts from most general to most derived; test inheritance thoroughly"
+
+  - id: SWC-127
+    title: "Arbitrary Jump with Function Type Variable"
+    severity: critical
+    description: "Function type variables can be set to arbitrary addresses and used to jump to malicious code"
+    defensive_check: "Avoid function type variables; restrict if required to audited internal function pointers"

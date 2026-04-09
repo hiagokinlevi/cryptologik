@@ -1,0 +1,73 @@
+[build-system]
+# Use setuptools as the build backend — widely supported and stable
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "cryptologik"
+version = "1.0.0"
+description = "Cryptographic security validation, key management posture review, smart contract analysis, and blockchain security baselines"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"  # Uses match statements, tomllib, and modern type syntax
+
+# Runtime dependencies — intentionally minimal
+dependencies = [
+    "click>=8.1",            # CLI framework for the cryptologik entrypoint
+    "pydantic>=2.5",         # Data validation and finding schemas
+    "pyyaml>=6.0",           # YAML parsing for SWC mappings and policy baselines
+    "structlog>=23.2",       # Structured JSON logging for audit trails
+    "python-dotenv>=1.0",    # .env file loading for runtime configuration
+    "cryptography>=41.0",    # Cryptographic primitives (used in validators and key checks)
+    "tabulate>=0.9",         # Table formatting for CLI findings output
+    "jinja2>=3.1",           # Template rendering for Markdown and HTML reports
+]
+
+[project.optional-dependencies]
+# Development and testing dependencies — not required in production
+dev = [
+    "pytest>=7.4",           # Test runner
+    "pytest-cov>=4.1",       # Coverage reporting
+    "mypy>=1.7",             # Static type checking
+    "ruff>=0.1",             # Fast linter and formatter
+]
+
+[project.scripts]
+# Registers `cryptologik` as a CLI command after installation
+cryptologik = "cli.main:cli"
+
+[tool.setuptools.packages.find]
+# Auto-discover all packages in the project root
+where = ["."]
+exclude = ["tests*", "docs*", "training*"]
+
+[tool.pytest.ini_options]
+# Test discovery and output configuration
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "--tb=short -q"   # Short tracebacks, quiet by default
+
+[tool.ruff]
+# Linter configuration — enforces consistent style
+line-length = 100
+target-version = "py311"
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "S",    # bandit security checks
+]
+ignore = [
+    "S101",  # Allow assert statements in tests
+    "S603",  # Allow subprocess calls (used in scanning automations)
+]
+
+[tool.mypy]
+# Type checking — strict mode catches most issues before runtime
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true  # Don't fail on untyped third-party libs

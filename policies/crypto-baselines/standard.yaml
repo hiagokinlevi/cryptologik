@@ -1,0 +1,186 @@
+# Cryptographic Baseline Policy — Standard Profile
+# ===================================================
+# This file defines the minimum cryptographic controls required for
+# systems assessed under the "standard" profile.
+#
+# Usage:
+#   cryptologik review-crypto-config --policy ./policies/crypto-baselines/standard.yaml
+#
+# This policy follows NIST SP 800-131A Rev. 2 recommendations and
+# OWASP Cryptographic Storage Cheat Sheet guidance.
+# It is intentionally conservative — deviations require documented justification.
+
+policy:
+  name: "cryptologik Standard Cryptographic Baseline"
+  version: "1.0"
+  effective_date: "2025-01-01"
+  # Review this policy at minimum annually and when new cryptographic guidance is published
+  review_date: "2026-01-01"
+  references:
+    - "NIST SP 800-131A Rev. 2"
+    - "NIST SP 800-57 Part 1 Rev. 5"
+    - "OWASP Cryptographic Storage Cheat Sheet"
+    - "RFC 8446 (TLS 1.3)"
+
+# ---------------------------------------------------------------------------
+# Symmetric Encryption
+# ---------------------------------------------------------------------------
+symmetric_encryption:
+  # Approved algorithms — use GCM for authenticated encryption (recommended)
+  approved_algorithms:
+    - AES-256-GCM       # Recommended: authenticated encryption with 256-bit key
+    - AES-128-GCM       # Acceptable when 128-bit security is sufficient
+    - ChaCha20-Poly1305 # Good alternative, especially for software implementations
+
+  # Deprecated algorithms — use of these is a policy violation
+  deprecated_algorithms:
+    - DES     # 56-bit key — broken; NIST deprecated in 2017
+    - 3DES    # 112-bit effective security — deprecated by NIST (SP 800-131A)
+    - RC4     # Stream cipher — multiple known cryptographic breaks
+    - RC2     # Broken; key size too small
+    - Blowfish # Key schedule weakness; acceptable only in legacy compatibility
+
+  # Block cipher modes
+  approved_modes:
+    - GCM     # Galois/Counter Mode — provides authenticated encryption (AEAD)
+    - CBC     # Cipher Block Chaining — acceptable only with random IV and MAC (encrypt-then-MAC)
+    - CTR     # Counter Mode — acceptable with unique nonce; requires separate MAC
+
+  # ECB is prohibited — identical plaintext produces identical ciphertext blocks
+  prohibited_modes:
+    - ECB     # Electronic Codebook — not semantically secure; never use
+
+  # Minimum key size
+  minimum_key_size_bits: 128
+
+# ---------------------------------------------------------------------------
+# Asymmetric Encryption and Key Exchange
+# ---------------------------------------------------------------------------
+asymmetric_encryption:
+  approved_algorithms:
+    - RSA     # Minimum 2048-bit key; 3072-bit recommended for systems through 2030+
+    - ECDH    # Elliptic Curve Diffie-Hellman; minimum P-256 curve
+    - X25519  # Recommended: Curve25519 Diffie-Hellman
+
+  # Minimum key sizes by algorithm
+  minimum_key_sizes:
+    RSA: 2048            # 2048 bits minimum; 3072+ recommended for long-term security
+    EC_NIST: 256         # P-256 minimum (equivalent to ~128-bit symmetric security)
+    EC_BRAINPOOL: 256    # brainpoolP256r1 minimum
+
+  deprecated_algorithms:
+    - RSA-1024           # 1024-bit RSA — broken in research; prohibited
+    - DSA-1024           # DSA with 1024-bit key — deprecated
+    - DH-1024            # 1024-bit Diffie-Hellman — broken
+
+# ---------------------------------------------------------------------------
+# Hashing
+# ---------------------------------------------------------------------------
+hashing:
+  # Approved hash algorithms by use case
+  approved_for_security:        # Signatures, MACs, key derivation, commitments
+    - SHA-256
+    - SHA-384
+    - SHA-512
+    - SHA3-256
+    - SHA3-512
+    - BLAKE2b
+    - BLAKE3
+
+  # Acceptable for non-security uses (checksums, data integrity where security is not a concern)
+  acceptable_for_non_security:
+    - SHA-1   # Only for non-security checksums; not for signatures or MACs
+    - MD5     # Only for non-cryptographic checksums (e.g., cache keys, partition hashing)
+              # Never for passwords, signatures, MACs, or any security purpose
+
+  deprecated_for_any_use:
+    - MD4     # Broken — do not use
+    - MD2     # Broken — do not use
+
+# ---------------------------------------------------------------------------
+# Password Hashing / Key Derivation
+# ---------------------------------------------------------------------------
+password_hashing:
+  # Approved password hashing algorithms — do NOT use generic hash functions for passwords
+  approved:
+    - argon2id    # Recommended: memory-hard, winner of Password Hashing Competition
+    - bcrypt      # Acceptable: well-studied, work factor must be >= 12
+    - scrypt      # Acceptable: memory-hard, good for high-security applications
+    - pbkdf2      # Acceptable: use with SHA-256/SHA-512 and >= 600,000 iterations (NIST 2023)
+
+  # Minimum parameters (enforce in code review)
+  minimum_parameters:
+    argon2id_memory_kib: 65536    # 64 MiB minimum
+    argon2id_iterations: 3        # Minimum 3 passes
+    argon2id_parallelism: 4       # 4 threads minimum
+    bcrypt_work_factor: 12        # Work factor >= 12
+    pbkdf2_iterations: 600000     # Per NIST 2023 guidelines with SHA-256
+
+  prohibited:
+    - MD5     # Never use for passwords — trivially reversible with rainbow tables
+    - SHA-1   # Not designed for passwords
+    - SHA-256 # Not designed for passwords without key stretching (PBKDF2 is acceptable)
+
+# ---------------------------------------------------------------------------
+# Message Authentication Codes (MACs) and Authenticated Encryption
+# ---------------------------------------------------------------------------
+mac:
+  approved:
+    - HMAC-SHA256    # Recommended for most use cases
+    - HMAC-SHA512    # Recommended where higher security margin is needed
+    - AES-GCM        # Provides authentication as part of AEAD (preferred for encryption)
+    - Poly1305       # As used in ChaCha20-Poly1305
+
+  prohibited:
+    - HMAC-MD5       # MD5 weaknesses undermine HMAC security; do not use for new code
+    - CBC-MAC        # Deprecated for variable-length messages; use CMAC instead
+
+# ---------------------------------------------------------------------------
+# TLS / Transport Security
+# ---------------------------------------------------------------------------
+tls:
+  # Minimum TLS version — TLS 1.2 minimum, TLS 1.3 strongly preferred
+  minimum_version: "1.2"
+  preferred_version: "1.3"
+
+  # Deprecated protocol versions — must not be enabled
+  prohibited_versions:
+    - SSL 2.0
+    - SSL 3.0
+    - TLS 1.0
+    - TLS 1.1
+
+  # Approved cipher suites for TLS 1.2 (TLS 1.3 suites are always acceptable)
+  approved_tls12_cipher_suites:
+    - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+    - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+    - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+    - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+    - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+
+  # Cipher suites with known weaknesses — must not be enabled
+  prohibited_cipher_suites:
+    - TLS_RSA_*           # No forward secrecy
+    - TLS_*_RC4_*         # RC4 is broken
+    - TLS_*_3DES_*        # 3DES is deprecated
+    - TLS_*_NULL_*        # No encryption
+    - TLS_*_EXPORT_*      # Deliberately weakened export ciphers
+
+# ---------------------------------------------------------------------------
+# Random Number Generation
+# ---------------------------------------------------------------------------
+random_number_generation:
+  # All cryptographic randomness must come from a CSPRNG
+  required_sources:
+    python: "secrets module or os.urandom()"
+    java: "java.security.SecureRandom"
+    nodejs: "crypto.randomBytes()"
+    go: "crypto/rand"
+    rust: "rand::rngs::OsRng"
+
+  prohibited_sources:
+    - "Python random module for cryptographic purposes"
+    - "Math.random() in JavaScript for cryptographic purposes"
+    - "java.util.Random for cryptographic purposes"
+    - "time-based seeds"
+    - "sequential counters"
