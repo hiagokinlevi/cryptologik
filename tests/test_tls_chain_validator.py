@@ -1,6 +1,6 @@
 """
 Tests for crypto/tls_chain_validator.py
-Covers TLS-CV-001 through TLS-CV-008 checks, chain-level validation, and happy paths.
+Covers TLS-CV-001 through TLS-CV-009 checks, chain-level validation, and happy paths.
 """
 import time
 import pytest
@@ -494,6 +494,58 @@ class TestTLSCV008:
         chain = [_leaf(key_type="DSA", key_bits=2048), _intermediate(), _root()]
         report = TLSChainValidator(reference_time=NOW).validate(chain)
         assert "TLS-CV-008" not in check_ids(report)
+
+
+# ---------------------------------------------------------------------------
+# TLS-CV-009: Long-lived leaf certificate
+# ---------------------------------------------------------------------------
+
+class TestTLSCV009:
+    def test_leaf_validity_above_398_days_fires(self):
+        chain = [
+            _leaf(
+                not_before=NOW - DAY,
+                not_after=NOW + 398 * DAY,
+            ),
+            _intermediate(),
+            _root(),
+        ]
+        report = TLSChainValidator(reference_time=NOW).validate(chain)
+        assert "TLS-CV-009" in check_ids(report)
+
+    def test_leaf_validity_398_days_ok(self):
+        chain = [
+            _leaf(
+                not_before=NOW - DAY,
+                not_after=NOW + 397 * DAY,
+            ),
+            _intermediate(),
+            _root(),
+        ]
+        report = TLSChainValidator(reference_time=NOW).validate(chain)
+        assert "TLS-CV-009" not in check_ids(report)
+
+    def test_leaf_validity_uses_medium_severity(self):
+        chain = [
+            _leaf(
+                not_before=NOW - DAY,
+                not_after=NOW + 398 * DAY,
+            ),
+            _intermediate(),
+            _root(),
+        ]
+        report = TLSChainValidator(reference_time=NOW).validate(chain)
+        findings = [f for f in report.findings if f.check_id == "TLS-CV-009"]
+        assert findings[0].severity == ChainSeverity.MEDIUM
+
+    def test_intermediate_long_lifetime_is_not_leaf_finding(self):
+        intermediate = _intermediate()
+        intermediate.not_before = NOW - 730 * DAY
+        intermediate.not_after = NOW + 3650 * DAY
+
+        chain = [_leaf(), intermediate, _root()]
+        report = TLSChainValidator(reference_time=NOW).validate(chain)
+        assert "TLS-CV-009" not in check_ids(report)
 
 
 # ---------------------------------------------------------------------------

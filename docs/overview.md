@@ -19,8 +19,9 @@
 ```
 ┌────────────────────────────────────────────────────────────┐
 │                       CLI (click)                          │
-│  review-crypto-config  review-key-posture                  │
-│  review-contract-checklist  generate-report                │
+│  review-crypto-config  review-tls-config                   │
+│  review-key-posture  review-contract-checklist             │
+│  generate-report                                           │
 └──────────────────────┬─────────────────────────────────────┘
                        │
        ┌───────────────┼──────────────────┐
@@ -56,6 +57,7 @@
 | Capability | Method | Limitations |
 |---|---|---|
 | Crypto config validation | Regex pattern matching | Static only; cannot detect runtime behavior |
+| TLS config validation | Offline cipher suite and protocol list review | Requires exported listener settings; does not probe live hosts |
 | Key management posture | YAML config review | Config-based; does not connect to live systems |
 | Smart contract review | Regex + checklist | Heuristic; formal verification not included |
 | Wallet security | Checklist (manual) | Requires operator input |

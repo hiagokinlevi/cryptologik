@@ -95,6 +95,15 @@ class TestWeakAlgorithmDetection:
         assert len(ecb_findings) >= 1
         assert all(f.risk_level == CryptoRisk.HIGH for f in ecb_findings)
 
+    def test_detects_aes_ecb_keyword_mode(self):
+        """Keyword ECB mode declarations should be flagged as HIGH."""
+        path = write_temp_file('cipher = AES.new(key, mode = "ECB")')
+        findings = validate_crypto_config(path)
+
+        ecb_findings = [f for f in findings if "ECB" in f.description]
+        assert len(ecb_findings) >= 1
+        assert all(f.risk_level == CryptoRisk.HIGH for f in ecb_findings)
+
 
 # ---------------------------------------------------------------------------
 # Clean file tests

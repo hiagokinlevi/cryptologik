@@ -1,7 +1,7 @@
 [build-system]
 # Use setuptools as the build backend — widely supported and stable
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "cryptologik"
@@ -21,6 +21,7 @@ dependencies = [
     "cryptography>=41.0",    # Cryptographic primitives (used in validators and key checks)
     "tabulate>=0.9",         # Table formatting for CLI findings output
     "jinja2>=3.1",           # Template rendering for Markdown and HTML reports
+    "rich>=13.7",            # Terminal tables and panels for CLI output
 ]
 
 [project.optional-dependencies]
@@ -34,7 +35,7 @@ dev = [
 
 [project.scripts]
 # Registers `cryptologik` as a CLI command after installation
-cryptologik = "cli.main:cli"
+cryptologik = "cryptologik_cli.main:cli"
 
 [tool.setuptools.packages.find]
 # Auto-discover all packages in the project root

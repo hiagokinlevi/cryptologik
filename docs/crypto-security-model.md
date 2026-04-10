@@ -41,8 +41,9 @@ Cryptographic weaknesses in TLS/SSL configurations.
 - TLS 1.0/1.1: deprecated due to protocol-level weaknesses (BEAST, POODLE)
 - RC4 cipher suites: stream cipher weaknesses
 - NULL cipher suites: no encryption at all
+- Long-lived public TLS leaf certificates: delayed rotation and larger exposure windows after key or issuance mistakes
 
-**Detection approach:** Policy baseline comparison.
+**Detection approach:** Offline listener configuration review with cipher-suite and protocol-version checks. The TLS scanner flags NULL or anonymous ciphers, RC4, DES/3DES, export-grade suites, missing AEAD, deprecated protocol versions, and missing forward secrecy. Certificate-chain review also checks expiry, SAN/CN alignment, weak signature algorithms, incomplete chains, weak key sizes, and long-lived public leaf certificate windows.
 
 ---
 
@@ -110,6 +111,8 @@ Use only OS-level CSPRNGs (cryptographically secure pseudorandom number generato
 
 ### Principle 5: Key Rotation
 Define and enforce rotation policies. Even with strong algorithms, long-lived keys accumulate risk.
+
+For public TLS, keep leaf certificates short-lived and automate renewal. The chain validator flags leaf certificates with validity windows above 398 days so teams can identify stale issuance patterns before browser trust or incident-response deadlines make renewal urgent.
 
 ### Principle 6: Defense in Depth
 Cryptography alone is not sufficient security. Access controls, key management, secure coding practices, and operational security all contribute to the overall security model.

@@ -18,6 +18,7 @@ TLS-CV-005   Certificate chain is incomplete (missing intermediate)
 TLS-CV-006   Subject CN does not match any SAN entry (mismatch)
 TLS-CV-007   Wildcard certificate at root level (*.example.com vs *.sub.example.com)
 TLS-CV-008   Certificate key too short (RSA < 2048, EC < 256)
+TLS-CV-009   Leaf certificate validity period exceeds public TLS lifetime guidance
 
 Usage::
 
@@ -216,7 +217,10 @@ _CHECK_WEIGHTS: Dict[str, int] = {
     "TLS-CV-006": 35,
     "TLS-CV-007": 20,
     "TLS-CV-008": 35,
+    "TLS-CV-009": 15,
 }
+
+_MAX_PUBLIC_TLS_VALIDITY_DAYS = 398
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +272,7 @@ class TLSChainValidator:
             if idx == 0:
                 findings.extend(self._check_san_cn(cert, ci))
                 findings.extend(self._check_wildcard(cert, ci))
+                findings.extend(self._check_leaf_validity_window(cert, ci))
 
         # Chain-level check
         findings.extend(self._check_chain_completeness(chain))
@@ -477,6 +482,32 @@ class TLSChainValidator:
                     ),
                 )]
         return []
+
+    def _check_leaf_validity_window(self, cert: CertInfo, idx: int) -> List[ChainFinding]:
+        """TLS-CV-009: Leaf certificate lifetime exceeds 398 days."""
+        if cert.not_before <= 0 or cert.not_after <= 0:
+            return []
+
+        lifetime_days = int((cert.not_after - cert.not_before) / 86400)
+        if lifetime_days <= _MAX_PUBLIC_TLS_VALIDITY_DAYS:
+            return []
+
+        return [ChainFinding(
+            check_id="TLS-CV-009",
+            severity=ChainSeverity.MEDIUM,
+            cert_cn=cert.subject_cn,
+            chain_idx=idx,
+            title=f"Leaf certificate validity period is {lifetime_days} days",
+            detail=(
+                f"Certificate '{cert.subject_cn}' is valid for {lifetime_days} days. "
+                "Public TLS leaf certificates should use short lifetimes and stay "
+                "within the 398-day maximum used by major browser trust programs."
+            ),
+            remediation=(
+                "Reissue the leaf certificate with a shorter validity period and "
+                "automate renewal before expiry."
+            ),
+        )]
 
     def _check_chain_completeness(
         self, chain: List[CertInfo]

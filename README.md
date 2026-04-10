@@ -9,7 +9,9 @@
 `cryptologik` is a defensive security toolkit for cryptographic and blockchain system reviews. It provides:
 
 - **Cryptographic configuration validation** — static analysis for deprecated algorithms, weak key sizes, ECB mode, and insecure PRNGs
+- **TLS configuration review** — offline cipher suite and protocol version analysis for listener configs
 - **Key management posture review** — checks for rotation policies, storage hygiene, and access controls
+- **TLS certificate chain validation** — offline review for weak signatures, incomplete chains, hostname/SAN drift, weak keys, expiry risk, and long-lived leaf certificates
 - **Smart contract review tooling** — SWC-mapped checklists for Solidity security review
 - **Blockchain security baselines** — wallet security checklists and custody operational guides
 - **Policy baselines** — YAML-defined cryptographic baseline policies for org-wide enforcement
@@ -70,6 +72,9 @@ cp .env.example .env
 # Scan a source directory for cryptographic anti-patterns
 cryptologik review-crypto-config --path ./src --output report.md
 
+# Review offline TLS listener configuration
+cryptologik review-tls-config --config tls-config.json --output tls-results.json
+
 # Review key management posture from a config file
 cryptologik review-key-posture --config key-management-policy.yaml
 
@@ -97,6 +102,21 @@ Detects common cryptographic anti-patterns in source code:
 | AES-ECB mode | High | `AES.new(key, AES.MODE_ECB)` |
 | Weak PRNG | High | `random.token_hex()` instead of `secrets` |
 
+### TLS Configuration Review
+
+Reviews JSON exports of listener TLS settings without making network calls:
+
+```json
+{
+  "config_id": "prod-ingress",
+  "cipher_suites": ["TLS_AES_256_GCM_SHA384", "TLS_CHACHA20_POLY1305_SHA256"],
+  "tls_versions": ["TLSv1.3"],
+  "description": "production ingress listener"
+}
+```
+
+The `review-tls-config` command grades each config and flags NULL/anonymous suites, RC4, DES/3DES, export-grade ciphers, missing AEAD, deprecated SSL/TLS protocol versions, and missing forward secrecy. Use `--fail-on high` or `--fail-on critical` for CI gates.
+
 ### Smart Contract Review (SWC-aligned)
 
 Covers the most critical SWC entries:
@@ -115,6 +135,18 @@ Reviews key management configurations for:
 - Storage location (secrets manager vs. plaintext file vs. environment variable)
 - Access control (principle of least privilege on key access)
 - Lifecycle documentation (creation, rotation, revocation procedures)
+
+### TLS Certificate Chain Validation
+
+Reviews structured certificate metadata without making live network connections:
+
+| Check | Risk | Description |
+|-------|------|-------------|
+| TLS-CV-001 | High | Weak certificate signature algorithms such as MD5 or SHA-1 |
+| TLS-CV-002 | Critical/High | Expired or not-yet-valid certificates |
+| TLS-CV-005 | High | Missing intermediate certificates in a presented chain |
+| TLS-CV-008 | High | RSA keys below 2048 bits or EC keys below 256 bits |
+| TLS-CV-009 | Medium | Leaf certificates with validity periods above 398 days |
 
 ---
 

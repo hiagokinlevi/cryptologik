@@ -64,7 +64,7 @@ _WEAK_ALGO_PATTERNS = [
      "RC4 is broken and must not be used. Use AES-256-GCM or ChaCha20-Poly1305.",
      ""),
 
-    (r"\.AES\b.*\bECB\b|ECBMode|mode=ECB|'ECB'", CryptoRisk.HIGH,
+    (r"\bAES\b.*\b(?:MODE_)?ECB\b|ECBMode|mode\s*=\s*['\"]?ECB|['\"]ECB['\"]", CryptoRisk.HIGH,
      "AES-ECB mode detected",
      "ECB mode is not semantically secure — identical plaintext blocks produce identical ciphertext. Use GCM or CBC with proper IV.",
      ""),

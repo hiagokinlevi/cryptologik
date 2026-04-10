@@ -5,8 +5,8 @@
 ## v1.1 — Expanded Static Analysis
 
 - [ ] Language-specific validators for Java (JCA/JCE misuse), Go (crypto/tls misconfigs), JavaScript (node:crypto anti-patterns)
-- [ ] TLS configuration scanner (cipher suite analysis, protocol version checks)
-- [ ] Certificate chain validation tooling
+- [x] TLS configuration scanner (cipher suite analysis, protocol version checks)
+- [x] Certificate chain validation tooling with weak signature, incomplete chain, hostname/SAN, weak key, expiry, and long-lived leaf-certificate checks
 - [ ] PKCS#11 / HSM integration posture checks
 
 ## v1.2 — Smart Contract Coverage
@@ -52,6 +52,7 @@
 - [x] Pydantic finding schemas
 - [x] Markdown report generator
 - [x] Click CLI (review-crypto-config, review-key-posture, review-contract-checklist, generate-report)
+- [x] Offline TLS configuration scanner with CI fail thresholds
 
 ---
 
