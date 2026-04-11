@@ -1,0 +1,65 @@
+maturity: reviewed
+program_name: cyber-port-crypto-modernization
+assets:
+  - asset_id: edge-api-prod
+    asset_name: edge-api-prod
+    asset_type: api_gateway
+    environment: production
+    business_criticality: critical
+    current_primitives: [RSA-2048, ECDHE, AES-256-GCM]
+    hardcoded_algorithm_dependencies: [RSA-2048]
+    third_party_dependencies: [external_hsm_vendor]
+    migration_blockers: [legacy_client_interoperability]
+    algorithm_abstraction: false
+    versioned_policies: true
+    dual_stack_support: false
+    hybrid_ready: false
+    pq_inventory_complete: false
+    migration_runbook: false
+    key_lifecycle_automation: true
+    classical_public_key_dependency: true
+    long_term_confidentiality: false
+    data_retention_years: 2
+    owner_hint: platform-security
+
+  - asset_id: archive-vault
+    asset_name: archive-vault
+    asset_type: encrypted_archive
+    environment: production
+    business_criticality: high
+    current_primitives: [RSA-3072, AES-256-GCM]
+    hardcoded_algorithm_dependencies: []
+    third_party_dependencies: [backup_provider]
+    migration_blockers: []
+    algorithm_abstraction: true
+    versioned_policies: true
+    dual_stack_support: false
+    hybrid_ready: false
+    pq_inventory_complete: true
+    migration_runbook: false
+    key_lifecycle_automation: false
+    classical_public_key_dependency: true
+    long_term_confidentiality: true
+    data_retention_years: 12
+    owner_hint: records-security
+
+  - asset_id: signing-service-stage
+    asset_name: signing-service-stage
+    asset_type: internal_signing_service
+    environment: staging
+    business_criticality: medium
+    current_primitives: [ECDSA-P256, TLSv1.3]
+    hardcoded_algorithm_dependencies: []
+    third_party_dependencies: []
+    migration_blockers: []
+    algorithm_abstraction: true
+    versioned_policies: true
+    dual_stack_support: true
+    hybrid_ready: true
+    pq_inventory_complete: true
+    migration_runbook: true
+    key_lifecycle_automation: true
+    classical_public_key_dependency: true
+    long_term_confidentiality: false
+    data_retention_years: 1
+    owner_hint: appsec-lab

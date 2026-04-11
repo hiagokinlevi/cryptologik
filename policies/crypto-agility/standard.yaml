@@ -1,0 +1,18 @@
+maturity: reviewed
+profile_name: standard-crypto-agility
+description: Baseline profile for evaluating algorithm agility, policy versioning, and migration readiness.
+controls:
+  algorithm_abstraction_required: true
+  versioned_policies_required: true
+  dual_stack_support_required_for_critical: true
+  migration_runbook_required: true
+  key_lifecycle_automation_required: true
+scoring_weights:
+  abstraction_gap: 20
+  hardcoded_dependency: 8
+  missing_policy_versioning: 10
+  no_dual_stack_support: 15
+  missing_runbook: 10
+  missing_lifecycle_automation: 10
+  third_party_dependency: 5
+  migration_blocker: 5

@@ -10,7 +10,7 @@
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Report vulnerabilities via GitHub's private vulnerability reporting feature (Security tab → "Report a vulnerability").
+Report vulnerabilities by emailing **hiagokinlevi@protonmail.com** or via GitHub's private vulnerability reporting feature (Security tab → "Report a vulnerability").
 
 Include:
 - A clear description of the vulnerability

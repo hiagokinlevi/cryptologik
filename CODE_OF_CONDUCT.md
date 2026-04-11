@@ -26,7 +26,7 @@ Project maintainers may take corrective action, including temporary or permanent
 
 ## Reporting
 
-Report unacceptable behavior via GitHub. All complaints will be reviewed and investigated.
+Report unacceptable behavior to **hiagokinlevi@protonmail.com**. All complaints will be reviewed and investigated.
 
 ## Attribution
 

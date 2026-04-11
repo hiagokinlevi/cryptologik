@@ -1,0 +1,21 @@
+maturity: reviewed
+profile_name: pqc-foundation
+description: Foundation profile for post-quantum readiness and hybrid migration prioritization.
+controls:
+  pq_inventory_required: true
+  hybrid_ready_required_for_long_term_confidentiality: true
+  migration_runbook_required: true
+  supplier_readiness_review_required: true
+thresholds:
+  long_term_confidentiality_years: 7
+  early_wave_priority_minimum: 80
+  planning_wave_priority_minimum: 60
+scoring_weights:
+  missing_inventory: 15
+  classical_public_key_dependency: 15
+  no_hybrid_path: 20
+  third_party_dependency: 3
+  missing_runbook: 10
+  long_term_confidentiality: 15
+  retention_over_threshold: 10
+  migration_blocker: 5

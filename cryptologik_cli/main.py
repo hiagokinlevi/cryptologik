@@ -8,6 +8,9 @@ Commands:
     review-tls-config           Review TLS cipher suite and protocol configuration
     review-key-posture          Review key management posture from a YAML config
     review-contract-checklist   Run smart contract security checklist
+    assess-crypto-agility       Evaluate migration flexibility and algorithm coupling
+    assess-pqc-readiness        Evaluate post-quantum readiness and confidentiality risk
+    generate-migration-plan     Build a wave-based hybrid migration plan
     generate-report             Generate a Markdown security report
 
 Usage:
@@ -25,6 +28,7 @@ from pathlib import Path
 from typing import Optional
 
 import click
+import yaml
 
 try:
     from dotenv import load_dotenv
@@ -98,6 +102,31 @@ STRICTNESS = os.getenv("STRICTNESS", "standard")
 def cli() -> None:
     """cryptologik — Cryptographic and blockchain security review toolkit."""
     pass
+
+
+def _load_structured_document(path: str) -> dict:
+    """Carrega um documento JSON ou YAML para os fluxos de analise offline."""
+    file_path = Path(path)
+    raw = file_path.read_text(encoding="utf-8")
+    if file_path.suffix.lower() in {".yaml", ".yml"}:
+        loaded = yaml.safe_load(raw)
+    else:
+        loaded = json.loads(raw)
+    if not isinstance(loaded, dict):
+        raise click.ClickException("Expected a JSON/YAML object with metadata and an assets list.")
+    return loaded
+
+
+def _load_asset_profiles(path: str) -> tuple[str, list]:
+    """Converte um inventario estruturado em perfis validados de ativos."""
+    from schemas.advanced_assessment import CryptoAssetProfile
+
+    loaded = _load_structured_document(path)
+    assets_raw = loaded.get("assets", [])
+    if not isinstance(assets_raw, list) or not assets_raw:
+        raise click.ClickException("Configuration must include a non-empty 'assets' list.")
+    target_name = str(loaded.get("program_name") or loaded.get("target_name") or Path(path).stem)
+    return target_name, [CryptoAssetProfile(**item) for item in assets_raw]
 
 
 # ---------------------------------------------------------------------------
@@ -437,6 +466,148 @@ def review_contract_checklist(contract: str, output: Optional[str]) -> None:
         ]
         Path(output).write_text(json.dumps(findings_json, indent=2), encoding="utf-8")
         console.print(f"[dim]Findings written to: {output}[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# assess-crypto-agility
+# ---------------------------------------------------------------------------
+
+@cli.command("assess-crypto-agility")
+@click.option(
+    "--config",
+    required=True,
+    type=click.Path(exists=True),
+    help="JSON or YAML inventory describing cryptographic assets and migration controls.",
+)
+@click.option(
+    "--output", "-o",
+    default=None,
+    type=click.Path(),
+    help="Write the assessment result to this file as JSON (optional).",
+)
+def assess_crypto_agility_command(config: str, output: Optional[str]) -> None:
+    """Evaluate crypto agility posture from an offline asset inventory."""
+    from analyzers.risk_modeling.crypto_agility_assessor import assess_crypto_agility
+
+    target_name, assets = _load_asset_profiles(config)
+    result = assess_crypto_agility(assets, target_name=target_name)
+
+    console.print(Panel.fit(
+        f"[bold]Target:[/bold] {result.target_name}\n"
+        f"[bold]Assets:[/bold] {result.assessed_assets}\n"
+        f"[bold]Agility score:[/bold] {result.crypto_agility_score}/100\n"
+        f"[bold]Migration complexity:[/bold] {result.migration_complexity_score}/100\n"
+        f"[bold]Coupling index:[/bold] {result.algorithm_coupling_index}/100\n"
+        f"[bold]Risk:[/bold] {result.risk_level.value}",
+        title="[bold cyan]cryptologik — Crypto Agility Assessment[/bold cyan]",
+    ))
+
+    actions = Table(title="Priority Actions", show_lines=True)
+    actions.add_column("#", width=4)
+    actions.add_column("Action", width=90)
+    for index, action in enumerate(result.recommended_actions, start=1):
+        actions.add_row(str(index), action)
+    console.print(actions)
+
+    if output:
+        Path(output).write_text(result.model_dump_json(indent=2), encoding="utf-8")
+        console.print(f"[dim]Assessment written to: {output}[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# assess-pqc-readiness
+# ---------------------------------------------------------------------------
+
+@cli.command("assess-pqc-readiness")
+@click.option(
+    "--config",
+    required=True,
+    type=click.Path(exists=True),
+    help="JSON or YAML inventory describing assets, retention, hybrid readiness, and blockers.",
+)
+@click.option(
+    "--output", "-o",
+    default=None,
+    type=click.Path(),
+    help="Write the readiness result to this file as JSON (optional).",
+)
+def assess_pqc_readiness_command(config: str, output: Optional[str]) -> None:
+    """Evaluate post-quantum readiness and long-term confidentiality exposure."""
+    from analyzers.pqc_readiness.readiness_assessor import assess_pqc_readiness
+
+    target_name, assets = _load_asset_profiles(config)
+    result = assess_pqc_readiness(assets, target_name=target_name)
+
+    console.print(Panel.fit(
+        f"[bold]Target:[/bold] {result.target_name}\n"
+        f"[bold]Assets:[/bold] {result.assessed_assets}\n"
+        f"[bold]PQC readiness:[/bold] {result.post_quantum_readiness_score}/100\n"
+        f"[bold]Future exposure:[/bold] {result.future_exposure_risk.value}\n"
+        f"[bold]Long-term confidentiality:[/bold] {result.long_term_confidentiality_risk.value}\n"
+        f"[bold]Hybrid priority:[/bold] {result.hybrid_transition_priority}\n"
+        f"[bold]Suggested wave:[/bold] {result.migration_wave}\n"
+        f"[bold]Status:[/bold] {result.quantum_transition_status}",
+        title="[bold cyan]cryptologik — Post-Quantum Readiness[/bold cyan]",
+    ))
+
+    actions = Table(title="Priority Actions", show_lines=True)
+    actions.add_column("#", width=4)
+    actions.add_column("Action", width=90)
+    for index, action in enumerate(result.recommended_actions, start=1):
+        actions.add_row(str(index), action)
+    console.print(actions)
+
+    if output:
+        Path(output).write_text(result.model_dump_json(indent=2), encoding="utf-8")
+        console.print(f"[dim]Readiness result written to: {output}[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# generate-migration-plan
+# ---------------------------------------------------------------------------
+
+@cli.command("generate-migration-plan")
+@click.option(
+    "--config",
+    required=True,
+    type=click.Path(exists=True),
+    help="JSON or YAML inventory describing assets and migration blockers.",
+)
+@click.option(
+    "--output", "-o",
+    default=None,
+    type=click.Path(),
+    help="Write the migration plan to this file as JSON (optional).",
+)
+def generate_migration_plan_command(config: str, output: Optional[str]) -> None:
+    """Generate a wave-based hybrid migration plan for the supplied inventory."""
+    from analyzers.migration_prioritization.planner import generate_migration_plan
+
+    _, assets = _load_asset_profiles(config)
+    plan = generate_migration_plan(assets)
+
+    table = Table(title=f"Migration Plan ({len(plan)} assets)", show_lines=True)
+    table.add_column("Asset", width=28)
+    table.add_column("Wave", width=6)
+    table.add_column("Priority", width=10)
+    table.add_column("Hybrid", width=8)
+    table.add_column("Confidentiality", width=16)
+
+    for item in plan:
+        table.add_row(
+            item.asset_name,
+            str(item.migration_wave),
+            str(item.migration_priority),
+            "yes" if item.hybrid_mode_required else "no",
+            item.long_term_confidentiality_risk.value,
+        )
+
+    console.print(table)
+
+    if output:
+        serialized = [item.model_dump(mode="json") for item in plan]
+        Path(output).write_text(json.dumps(serialized, indent=2), encoding="utf-8")
+        console.print(f"[dim]Migration plan written to: {output}[/dim]")
 
 
 # ---------------------------------------------------------------------------

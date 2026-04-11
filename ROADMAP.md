@@ -31,6 +31,21 @@
 - [ ] SARIF output format for IDE and CI/CD integration
 - [ ] CycloneDX cryptographic bill of materials (CBOM) output
 
+## v1.5 — Agility and PQC Foundations
+
+- [x] Crypto agility assessment with `crypto_agility_score`, `migration_complexity_score`, and `algorithm_coupling_index`
+- [x] Post-quantum readiness assessment with `post_quantum_readiness_score`, `future_exposure_risk`, and `long_term_confidentiality_risk`
+- [x] Wave-based hybrid migration planner for inventory-driven roadmaps
+- [x] YAML policy profiles for crypto agility and post-quantum migration
+- [x] Synthetic advanced inventory example and training tutorial
+
+## v1.6 — Protocol and Long-Term Risk
+
+- [ ] Protocol security review engine for handshake, downgrade, and trust-boundary analysis
+- [ ] Long-term confidentiality report generator with retention-aware prioritization
+- [ ] Quantum-safe executive summary report template
+- [ ] Environment-aware migration baselines (dev, staging, production, regulated)
+
 ## v2.0 — Continuous Monitoring
 
 - [ ] GitHub Actions integration for PR-level crypto review
@@ -54,6 +69,7 @@
 - [x] Markdown report generator
 - [x] Click CLI (review-crypto-config, review-key-posture, review-contract-checklist, generate-report)
 - [x] Offline TLS configuration scanner with CI fail thresholds
+- [x] Advanced CLI workflows for crypto agility, post-quantum readiness, and migration planning
 
 ---
 
