@@ -146,6 +146,28 @@ def _load_asset_profiles(path: str) -> tuple[str, list]:
     return target_name, assets
 
 
+def _load_report_payload(path: str) -> list[dict]:
+    """Load the report input file and reject malformed top-level payloads."""
+    try:
+        raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise click.ClickException(
+            "Could not parse findings JSON: "
+            f"{exc.msg} at line {exc.lineno}, column {exc.colno}."
+        ) from exc
+
+    if not isinstance(raw, list):
+        raise click.ClickException(
+            "Expected findings JSON to contain a top-level list of finding objects."
+        )
+
+    for index, item in enumerate(raw, start=1):
+        if not isinstance(item, dict):
+            raise click.ClickException(f"Finding entry #{index} must be a JSON object.")
+
+    return raw
+
+
 # ---------------------------------------------------------------------------
 # review-crypto-config
 # ---------------------------------------------------------------------------
@@ -665,11 +687,10 @@ def generate_report(
     from schemas.crypto_finding import AssessmentSummary, CryptoConfigFinding, RiskLevel, FindingCategory, FindingStatus
     from reports.report_generator import generate_markdown_report, generate_sarif_report
 
-    raw = json.loads(Path(findings_json).read_text())
+    raw = _load_report_payload(findings_json)
 
-    # Convert raw dicts to CryptoConfigFinding objects (simplified)
     findings = []
-    for item in raw:
+    for index, item in enumerate(raw, start=1):
         try:
             f = CryptoConfigFinding(
                 check_name=item.get("check_name", "unknown"),
@@ -681,8 +702,18 @@ def generate_report(
                 recommendation=item.get("recommendation", ""),
             )
             findings.append(f)
-        except Exception:
-            continue
+        except ValidationError as exc:
+            details = "; ".join(
+                f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+                for error in exc.errors()
+            )
+            raise click.ClickException(
+                f"Finding entry #{index} is invalid: {details}"
+            ) from exc
+        except ValueError as exc:
+            raise click.ClickException(
+                f"Finding entry #{index} is invalid: {exc}"
+            ) from exc
 
     summary = AssessmentSummary.from_findings(
         findings,
