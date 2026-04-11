@@ -203,6 +203,23 @@ def _load_report_payload(path: str) -> list[dict]:
     return raw
 
 
+def _require_string_list(value: object, *, field_name: str, entry_index: int) -> list[str]:
+    """Validate that a TLS config field is a JSON array of strings."""
+    if not isinstance(value, list):
+        raise click.ClickException(
+            f"TLS config entry #{entry_index} field '{field_name}' must be a JSON array of strings."
+        )
+
+    for item_index, item in enumerate(value, start=1):
+        if not isinstance(item, str):
+            raise click.ClickException(
+                f"TLS config entry #{entry_index} field '{field_name}' item #{item_index} "
+                "must be a string."
+            )
+
+    return value
+
+
 # ---------------------------------------------------------------------------
 # review-crypto-config
 # ---------------------------------------------------------------------------
@@ -372,8 +389,16 @@ def review_tls_config(config: str, output: Optional[str], fail_on: str) -> None:
             configs.append(
                 CipherSuiteConfig(
                     config_id=item["config_id"],
-                    cipher_suites=list(item.get("cipher_suites", [])),
-                    tls_versions=list(item.get("tls_versions", [])),
+                    cipher_suites=_require_string_list(
+                        item.get("cipher_suites", []),
+                        field_name="cipher_suites",
+                        entry_index=index,
+                    ),
+                    tls_versions=_require_string_list(
+                        item.get("tls_versions", []),
+                        field_name="tls_versions",
+                        entry_index=index,
+                    ),
                     description=item.get("description", item["config_id"]),
                 )
             )
