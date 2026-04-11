@@ -25,10 +25,61 @@ from pathlib import Path
 from typing import Optional
 
 import click
-from dotenv import load_dotenv
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
+
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover - fallback simples para ambientes minimos
+    def load_dotenv() -> bool:
+        """Mantem a CLI operacional quando python-dotenv nao esta instalado."""
+
+        return False
+
+try:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+except ModuleNotFoundError:  # pragma: no cover - fallback simples para ambientes minimos
+    class Console:
+        """Fallback minimo para ambientes sem rich."""
+
+        def print(self, *objects: object, **_: object) -> None:
+            print(*objects)
+
+    class Panel:
+        """Representacao textual simples para substituir rich.panel.Panel."""
+
+        def __init__(self, renderable: object, title: str | None = None) -> None:
+            self.renderable = renderable
+            self.title = title
+
+        @classmethod
+        def fit(cls, renderable: object, title: str | None = None) -> "Panel":
+            return cls(renderable, title=title)
+
+        def __str__(self) -> str:
+            return f"{self.title or 'Panel'}\n{self.renderable}"
+
+    class Table:
+        """Tabela textual simples para ambientes sem rich."""
+
+        def __init__(self, title: str = "", show_lines: bool = False) -> None:
+            self.title = title
+            self.show_lines = show_lines
+            self.columns: list[str] = []
+            self.rows: list[tuple[str, ...]] = []
+
+        def add_column(self, header: str, **_: object) -> None:
+            self.columns.append(header)
+
+        def add_row(self, *values: object) -> None:
+            self.rows.append(tuple(str(value) for value in values))
+
+        def __str__(self) -> str:
+            lines = [self.title] if self.title else []
+            if self.columns:
+                lines.append(" | ".join(self.columns))
+            lines.extend(" | ".join(row) for row in self.rows)
+            return "\n".join(lines)
 
 load_dotenv()
 
@@ -80,10 +131,12 @@ def cli() -> None:
 )
 def review_crypto_config(path: str, ext: str, output: Optional[str], strictness: str) -> None:
     """Scan source files for cryptographic configuration anti-patterns."""
-    from crypto.validators.config_validator import validate_crypto_config, CryptoRisk
+    from crypto.validators.config_validator import validate_crypto_config
 
     scan_path = Path(path)
     extensions = {f".{e.strip().lstrip('.')}" for e in ext.split(",")}
+    severity_rank = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+    strictness_threshold = {"strict": 1, "standard": 2, "minimal": 3}
 
     # Collect files to scan
     if scan_path.is_file():
@@ -103,10 +156,25 @@ def review_crypto_config(path: str, ext: str, output: Optional[str], strictness:
     for file in files:
         findings = validate_crypto_config(file)
         all_findings.extend(findings)
+    all_findings = [
+        finding
+        for finding in all_findings
+        if severity_rank[finding.risk_level.value] >= strictness_threshold[strictness]
+    ]
+    all_findings.sort(
+        key=lambda finding: (
+            -severity_rank[finding.risk_level.value],
+            finding.file_path,
+            finding.line_number,
+            finding.check_name,
+        )
+    )
 
     if not all_findings:
         console.print("[green]No cryptographic anti-patterns detected.[/green]")
-        console.print("[dim]Note: This scan does not guarantee absence of cryptographic weaknesses.[/dim]")
+        console.print(
+            "[dim]Note: This scan does not guarantee absence of cryptographic weaknesses.[/dim]"
+        )
         return
 
     # Build findings table

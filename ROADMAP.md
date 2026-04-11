@@ -4,7 +4,7 @@
 
 ## v1.1 — Expanded Static Analysis
 
-- [ ] Language-specific validators for Java (JCA/JCE misuse), Go (crypto/tls misconfigs), JavaScript (node:crypto anti-patterns)
+- [x] Language-specific validators for Java (JCA/JCE misuse), Go (crypto/tls misconfigs), JavaScript (node:crypto anti-patterns)
 - [x] TLS configuration scanner (cipher suite analysis, protocol version checks)
 - [x] Certificate chain validation tooling with weak signature, incomplete chain, hostname/SAN, weak key, expiry, and long-lived leaf-certificate checks
 - [ ] PKCS#11 / HSM integration posture checks
@@ -43,6 +43,7 @@
 ## Completed
 
 - [x] Cryptographic configuration validator (MD5, SHA-1, DES, RC4, ECB, weak PRNG)
+- [x] Language-aware crypto validator coverage for Java, Go, and JavaScript/TypeScript
 - [x] Key management posture checker
 - [x] Smart contract review checklist with SWC mappings
 - [x] SWC reference YAML (selected critical entries)

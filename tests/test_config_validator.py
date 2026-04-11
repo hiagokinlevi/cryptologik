@@ -242,3 +242,88 @@ class TestRiskLevels:
         findings = validate_crypto_config(path)
         ecb = [f for f in findings if "ECB" in f.description]
         assert all(f.risk_level == CryptoRisk.HIGH for f in ecb)
+
+
+class TestLanguageSpecificDetection:
+    def test_detects_java_md5(self):
+        path = write_temp_file(
+            'MessageDigest digest = MessageDigest.getInstance("MD5");',
+            suffix=".java",
+        )
+        findings = validate_crypto_config(path)
+
+        java_md5 = [f for f in findings if f.check_name == "java_jca_md5"]
+        assert len(java_md5) == 1
+        assert java_md5[0].risk_level == CryptoRisk.HIGH
+
+    def test_detects_java_sha1prng(self):
+        path = write_temp_file(
+            'SecureRandom rng = SecureRandom.getInstance("SHA1PRNG");',
+            suffix=".java",
+        )
+        findings = validate_crypto_config(path)
+
+        prng_findings = [f for f in findings if f.check_name == "java_jce_sha1prng"]
+        assert len(prng_findings) == 1
+        assert prng_findings[0].risk_level == CryptoRisk.HIGH
+
+    def test_detects_go_insecure_skip_verify(self):
+        path = write_temp_file(
+            "cfg := &tls.Config{InsecureSkipVerify: true}",
+            suffix=".go",
+        )
+        findings = validate_crypto_config(path)
+
+        go_findings = [f for f in findings if f.check_name == "go_tls_insecure_skip_verify"]
+        assert len(go_findings) == 1
+        assert go_findings[0].risk_level == CryptoRisk.CRITICAL
+
+    def test_detects_go_legacy_tls_min_version(self):
+        path = write_temp_file(
+            "cfg := &tls.Config{MinVersion: tls.VersionTLS10}",
+            suffix=".go",
+        )
+        findings = validate_crypto_config(path)
+
+        go_findings = [f for f in findings if f.check_name == "go_tls_legacy_min_version"]
+        assert len(go_findings) == 1
+        assert go_findings[0].risk_level == CryptoRisk.HIGH
+
+    def test_detects_js_create_cipher(self):
+        path = write_temp_file(
+            "const cipher = crypto.createCipher('aes192', password);",
+            suffix=".js",
+        )
+        findings = validate_crypto_config(path)
+
+        js_findings = [f for f in findings if f.check_name == "js_crypto_create_cipher"]
+        assert len(js_findings) == 1
+        assert js_findings[0].risk_level == CryptoRisk.CRITICAL
+
+    def test_detects_js_math_random_secret_generation(self):
+        path = write_temp_file(
+            "const token = `${Math.random()}-${userId}`;",
+            suffix=".ts",
+        )
+        findings = validate_crypto_config(path)
+
+        js_findings = [f for f in findings if f.check_name == "js_crypto_math_random_secret"]
+        assert len(js_findings) == 1
+        assert js_findings[0].risk_level == CryptoRisk.HIGH
+
+    def test_detects_js_low_iteration_pbkdf2(self):
+        path = write_temp_file(
+            "const hash = pbkdf2Sync(password, salt, 5000, 32, 'sha256');",
+            suffix=".js",
+        )
+        findings = validate_crypto_config(path)
+
+        js_findings = [f for f in findings if f.check_name == "js_crypto_pbkdf2_low_iterations"]
+        assert len(js_findings) == 1
+        assert js_findings[0].risk_level == CryptoRisk.HIGH
+
+    def test_extension_guard_prevents_go_only_rule_in_python_file(self):
+        path = write_temp_file("cfg = {'InsecureSkipVerify': true}", suffix=".py")
+        findings = validate_crypto_config(path)
+
+        assert all(f.check_name != "go_tls_insecure_skip_verify" for f in findings)

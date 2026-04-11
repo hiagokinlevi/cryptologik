@@ -8,7 +8,7 @@
 
 **1. Defensive-only:** All content and tooling is oriented toward finding and fixing weaknesses. This tool does not assist in exploitation.
 
-**2. Accurate risk calibration:** Finding severities are calibrated against real-world exploitability. Every detection pattern documents its false positive risk so reviewers can make informed decisions.
+**2. Accurate risk calibration:** Finding severities are calibrated against real-world exploitability. Every detection pattern documents its false positive risk so reviewers can make informed decisions, and CLI strictness lets teams suppress lower-severity findings when they only want blocking issues.
 
 **3. Composable:** Components work independently. Run only the validators you need without requiring the full tool.
 
@@ -56,7 +56,7 @@
 
 | Capability | Method | Limitations |
 |---|---|---|
-| Crypto config validation | Regex pattern matching | Static only; cannot detect runtime behavior |
+| Crypto config validation | Regex pattern matching across Python, Java, Go, and JavaScript/TypeScript | Static only; cannot detect runtime behavior |
 | TLS config validation | Offline cipher suite and protocol list review | Requires exported listener settings; does not probe live hosts |
 | Key management posture | YAML config review | Config-based; does not connect to live systems |
 | Smart contract review | Regex + checklist | Heuristic; formal verification not included |

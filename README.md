@@ -8,7 +8,7 @@
 
 `cryptologik` is a defensive security toolkit for cryptographic and blockchain system reviews. It provides:
 
-- **Cryptographic configuration validation** — static analysis for deprecated algorithms, weak key sizes, ECB mode, and insecure PRNGs
+- **Cryptographic configuration validation** — static analysis for deprecated algorithms, weak key sizes, ECB mode, insecure PRNGs, and language-specific anti-patterns in Python, Java, Go, and JavaScript/TypeScript
 - **TLS configuration review** — offline cipher suite and protocol version analysis for listener configs
 - **Key management posture review** — checks for rotation policies, storage hygiene, and access controls
 - **TLS certificate chain validation** — offline review for weak signatures, incomplete chains, hostname/SAN drift, weak keys, expiry risk, and long-lived leaf certificates
@@ -70,7 +70,7 @@ cp .env.example .env
 
 ```bash
 # Scan a source directory for cryptographic anti-patterns
-cryptologik review-crypto-config --path ./src --output report.md
+cryptologik review-crypto-config --path ./src --strictness standard --output crypto-findings.json
 
 # Review offline TLS listener configuration
 cryptologik review-tls-config --config tls-config.json --output tls-results.json
@@ -100,7 +100,12 @@ Detects common cryptographic anti-patterns in source code:
 | DES / 3DES | Critical | Any use |
 | RC4 | Critical | Any use |
 | AES-ECB mode | High | `AES.new(key, AES.MODE_ECB)` |
-| Weak PRNG | High | `random.token_hex()` instead of `secrets` |
+| Weak PRNG | High | `random` or `Math.random()` near key/token/secret generation |
+| Java JCA/JCE misuse | High | `MessageDigest.getInstance("MD5")`, `SHA1PRNG`, `SHA1withRSA` |
+| Go crypto/tls misconfig | High/Critical | `MinVersion: tls.VersionTLS10`, `InsecureSkipVerify: true` |
+| Node.js crypto anti-patterns | High/Critical | `createCipher()`, `createHash("md5")`, weak PBKDF2 iterations |
+
+The `review-crypto-config` command supports `--strictness minimal|standard|strict` so teams can use the same scanner for local review, CI baselines, or broader audit passes.
 
 ### TLS Configuration Review
 

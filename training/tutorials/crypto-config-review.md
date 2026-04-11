@@ -15,6 +15,8 @@ In this tutorial you will:
 4. Run a key management posture check
 5. Generate a report
 
+The same workflow also supports Java, Go, and JavaScript/TypeScript sources, so once you are comfortable with the Python example below you can point the scanner at mixed-language repositories without changing the basic command shape.
+
 ---
 
 ## Step 1: Install cryptologik
@@ -75,6 +77,7 @@ EOF
 ```bash
 cryptologik review-crypto-config \
   --path /tmp/insecure_crypto_sample.py \
+  --strictness standard \
   --output /tmp/findings.json
 ```
 
@@ -99,6 +102,8 @@ The scanner detected `import random` followed by its use near a security-sensiti
 The scanner detected `DES`. DES uses a 56-bit key that can be brute-forced in hours with commodity hardware.
 
 **What to do:** Remove all DES usage. Replace with AES-256-GCM.
+
+If you want a quieter triage pass for CI, rerun the same command with `--strictness minimal`. That keeps the scan focused on high and critical findings while still using the same detection engine.
 
 ---
 
