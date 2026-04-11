@@ -6,6 +6,6 @@ quando o toolkit esta instalado em modo editavel ao lado de outros
 repositorios do portfolio.
 """
 
-from .report_generator import generate_markdown_report
+from .report_generator import generate_markdown_report, generate_sarif_report
 
-__all__ = ["generate_markdown_report"]
+__all__ = ["generate_markdown_report", "generate_sarif_report"]

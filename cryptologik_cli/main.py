@@ -11,14 +11,14 @@ Commands:
     assess-crypto-agility       Evaluate migration flexibility and algorithm coupling
     assess-pqc-readiness        Evaluate post-quantum readiness and confidentiality risk
     generate-migration-plan     Build a wave-based hybrid migration plan
-    generate-report             Generate a Markdown security report
+    generate-report             Generate Markdown, JSON, or SARIF security reports
 
 Usage:
     cryptologik review-crypto-config --path ./src
     cryptologik review-tls-config --config tls-config.json
     cryptologik review-key-posture --config key-management.yaml
     cryptologik review-contract-checklist --contract ./contracts/MyToken.sol
-    cryptologik generate-report --assessment-id ASSESS-ABC123 --format markdown
+    cryptologik generate-report --findings-json findings.json --format markdown
 """
 
 import json
@@ -622,7 +622,7 @@ def generate_migration_plan_command(config: str, output: Optional[str]) -> None:
 )
 @click.option(
     "--format", "report_format",
-    type=click.Choice(["markdown", "json"]),
+    type=click.Choice(["markdown", "json", "sarif"]),
     default="markdown",
     show_default=True,
 )
@@ -646,7 +646,7 @@ def generate_report(
 ) -> None:
     """Generate a security report from a findings JSON file."""
     from schemas.crypto_finding import AssessmentSummary, CryptoConfigFinding, RiskLevel, FindingCategory, FindingStatus
-    from reports.report_generator import generate_markdown_report
+    from reports.report_generator import generate_markdown_report, generate_sarif_report
 
     raw = json.loads(Path(findings_json).read_text())
 
@@ -675,6 +675,8 @@ def generate_report(
 
     if report_format == "markdown":
         report = generate_markdown_report(summary, verbosity=verbosity)
+    elif report_format == "sarif":
+        report = generate_sarif_report(summary)
     else:
         report = summary.model_dump_json(indent=2)
 

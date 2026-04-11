@@ -1,20 +1,22 @@
 """
 Cryptographic and Blockchain Security Report Generator
 ========================================================
-Generates Markdown security assessment reports from AssessmentSummary objects.
+Generates Markdown and SARIF security assessment reports from AssessmentSummary objects.
 
 Produces:
   - A structured Markdown report with executive summary, findings table, and recommendations
+  - SARIF 2.1.0 output for CI/CD and IDE ingestion
   - Optional per-finding detail sections
   - Risk heat map (text-based) for visual severity distribution
 
 Usage:
     from schemas.crypto_finding import AssessmentSummary
-    from reports.report_generator import generate_markdown_report
+    from reports.report_generator import generate_markdown_report, generate_sarif_report
 
     summary = AssessmentSummary.from_findings(findings, target_description="MyProject")
     report_md = generate_markdown_report(summary, verbosity="standard")
     Path("report.md").write_text(report_md)
+    Path("report.sarif").write_text(generate_sarif_report(summary))
 
 Design notes:
   - Report content is purely derived from the AssessmentSummary — no external calls
@@ -24,14 +26,20 @@ Design notes:
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Union
+from typing import Any, Union
 
 import structlog
 from dotenv import load_dotenv
-from jinja2 import Environment, BaseLoader
+
+try:
+    from jinja2 import BaseLoader, Environment
+except ModuleNotFoundError:  # pragma: no cover - optional dependency fallback
+    BaseLoader = None
+    Environment = None
 
 from schemas.crypto_finding import (
     AssessmentSummary,
@@ -206,6 +214,290 @@ def _get_location(finding: BaseFinding) -> str:
     return ""
 
 
+def _collect_findings(summary: AssessmentSummary) -> list[BaseFinding]:
+    """Return all findings in deterministic severity order."""
+    all_findings: list[BaseFinding] = [
+        *summary.crypto_config_findings,
+        *summary.smart_contract_findings,
+        *summary.key_management_findings,
+    ]
+    risk_order = {
+        RiskLevel.CRITICAL: 0,
+        RiskLevel.HIGH: 1,
+        RiskLevel.MEDIUM: 2,
+        RiskLevel.LOW: 3,
+        RiskLevel.INFORMATIONAL: 4,
+    }
+    all_findings.sort(key=lambda finding: risk_order.get(finding.risk_level, 99))
+    return all_findings
+
+
+def _render_markdown_fallback(
+    summary: AssessmentSummary,
+    all_findings: list[BaseFinding],
+    verbosity: str,
+    generated_at: str,
+) -> str:
+    """Render a minimal Markdown report when Jinja2 is unavailable."""
+    lines = [
+        "# Cryptographic Security Assessment Report",
+        "",
+        f"**Target:** {summary.target_description}",
+        f"**Assessment ID:** {summary.assessment_id}",
+        f"**Conducted At:** {summary.conducted_at.strftime('%Y-%m-%d %H:%M UTC')}",
+        f"**Conducted By:** {summary.conducted_by or 'cryptologik automated scan'}",
+        f"**Profile:** {summary.assessment_profile}",
+        f"**Generated At:** {generated_at}",
+        "",
+        "---",
+        "",
+        "## Executive Summary",
+        "",
+        f"**Overall Risk Rating: {_risk_badge(summary.overall_risk)}**",
+        "",
+        "| Risk Level | Count |",
+        "|---|---|",
+        f"| Critical | {summary.critical_count} |",
+        f"| High | {summary.high_count} |",
+        f"| Medium | {summary.medium_count} |",
+        f"| Low | {summary.low_count} |",
+        f"| Informational | {summary.informational_count} |",
+        f"| **Total** | **{summary.total_findings}** |",
+        "",
+        "---",
+        "",
+        "## Findings Overview",
+        "",
+    ]
+
+    if not all_findings:
+        lines.append("No findings were identified.")
+        return "\n".join(lines)
+
+    header = "| # | ID | Risk | Category | Title |"
+    separator = "|---|---|---|---|---|"
+    if verbosity == "verbose":
+        header = "| # | ID | Risk | Category | Title | File/Location |"
+        separator = "|---|---|---|---|---|---|"
+    lines.extend([header, separator])
+
+    for index, finding in enumerate(all_findings, start=1):
+        row = (
+            f"| {index} | {finding.finding_id} | {_risk_badge(finding.risk_level)} | "
+            f"{finding.category.value} | {finding.title} |"
+        )
+        if verbosity == "verbose":
+            row = row[:-1] + f" {_get_location(finding)} |"
+        lines.append(row)
+
+    lines.extend(["", "---", "", "## Detailed Findings", ""])
+    for index, finding in enumerate(all_findings, start=1):
+        lines.extend(
+            [
+                f"### {index}. {finding.title}",
+                "",
+                "| Field | Value |",
+                "|---|---|",
+                f"| **Finding ID** | {finding.finding_id} |",
+                f"| **Risk Level** | {_risk_badge(finding.risk_level)} |",
+                f"| **Category** | {finding.category.value} |",
+                f"| **Status** | {finding.status.value} |",
+            ]
+        )
+        if isinstance(finding, CryptoConfigFinding):
+            lines.extend(
+                [
+                    f"| **File** | `{finding.file_path}` |",
+                    f"| **Line** | {finding.line_number} |",
+                    f"| **Check** | {finding.check_name} |",
+                ]
+            )
+        elif isinstance(finding, SmartContractFinding):
+            lines.append(f"| **SWC** | {finding.swc_id} — {finding.swc_title} |")
+            if finding.contract_path:
+                lines.append(f"| **Contract** | `{finding.contract_path}` |")
+            if finding.line_number:
+                lines.append(f"| **Line** | {finding.line_number} |")
+        elif isinstance(finding, KeyManagementFinding):
+            lines.extend(
+                [
+                    f"| **Check ID** | {finding.check_id} |",
+                    f"| **Key** | {finding.key_name} |",
+                ]
+            )
+
+        lines.extend(
+            [
+                "",
+                "**Description:**",
+                "",
+                finding.description,
+                "",
+                "**Recommendation:**",
+                "",
+                finding.recommendation,
+                "",
+            ]
+        )
+        if finding.false_positive_note:
+            lines.extend(["**False Positive Note:**", "", f"_{finding.false_positive_note}_", ""])
+        if finding.requires_manual_review:
+            lines.append(
+                "> **Manual Review Required:** This finding was produced by automated static analysis. Confirm whether it represents a real vulnerability before remediation."
+            )
+            lines.append("")
+        if verbosity == "verbose" and finding.evidence:
+            lines.extend(["**Evidence (truncated):**", "", "```", finding.evidence, "```", ""])
+        lines.extend(["---", ""])
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _sarif_level(risk: RiskLevel) -> str:
+    """Map internal severities to SARIF levels."""
+    if risk in {RiskLevel.CRITICAL, RiskLevel.HIGH}:
+        return "error"
+    if risk == RiskLevel.MEDIUM:
+        return "warning"
+    return "note"
+
+
+def _sarif_rule_id(finding: BaseFinding) -> str:
+    """Pick a stable per-finding-type SARIF rule identifier."""
+    if isinstance(finding, CryptoConfigFinding):
+        return finding.check_name
+    if isinstance(finding, SmartContractFinding):
+        return finding.swc_id
+    if isinstance(finding, KeyManagementFinding):
+        return finding.check_id
+    return finding.finding_id
+
+
+def _sarif_help_markdown(finding: BaseFinding) -> str:
+    """Build SARIF remediation guidance from finding details."""
+    lines = [finding.description.strip()]
+    if finding.recommendation.strip():
+        lines.extend(["", f"Recommendation: {finding.recommendation.strip()}"])
+    if finding.false_positive_note.strip():
+        lines.extend(["", f"False positive note: {finding.false_positive_note.strip()}"])
+    return "\n".join(lines)
+
+
+def _sarif_rule_descriptor(finding: BaseFinding) -> dict[str, Any]:
+    """Create a SARIF rule descriptor for a finding."""
+    return {
+        "id": _sarif_rule_id(finding),
+        "name": _sarif_rule_id(finding),
+        "shortDescription": {"text": finding.title},
+        "fullDescription": {"text": finding.description},
+        "help": {"text": finding.recommendation or finding.description},
+        "helpUri": "https://github.com/hiagokinlevi/cryptologik",
+        "properties": {
+            "category": finding.category.value,
+            "tags": list(finding.tags),
+            "defaultConfiguration": {"level": _sarif_level(finding.risk_level)},
+        },
+    }
+
+
+def _sarif_locations(finding: BaseFinding) -> list[dict[str, Any]]:
+    """Translate finding locations into SARIF physical locations."""
+    path: str | None = None
+    line_number: int | None = None
+    if isinstance(finding, CryptoConfigFinding):
+        path = finding.file_path
+        line_number = finding.line_number
+    elif isinstance(finding, SmartContractFinding) and finding.contract_path:
+        path = finding.contract_path
+        line_number = finding.line_number
+
+    if not path:
+        return []
+
+    location: dict[str, Any] = {
+        "physicalLocation": {
+            "artifactLocation": {"uri": path},
+        }
+    }
+    if line_number:
+        location["physicalLocation"]["region"] = {"startLine": line_number}
+    return [location]
+
+
+def generate_sarif_report(summary: AssessmentSummary) -> str:
+    """Generate SARIF 2.1.0 output from an assessment summary."""
+    all_findings = _collect_findings(summary)
+    rules_by_id: dict[str, dict[str, Any]] = {}
+    results: list[dict[str, Any]] = []
+
+    for finding in all_findings:
+        rule_id = _sarif_rule_id(finding)
+        rules_by_id.setdefault(rule_id, _sarif_rule_descriptor(finding))
+
+        result: dict[str, Any] = {
+            "ruleId": rule_id,
+            "level": _sarif_level(finding.risk_level),
+            "message": {"text": finding.title},
+            "help": {"markdown": _sarif_help_markdown(finding)},
+            "properties": {
+                "findingId": finding.finding_id,
+                "riskLevel": finding.risk_level.value,
+                "category": finding.category.value,
+                "status": finding.status.value,
+                "requiresManualReview": finding.requires_manual_review,
+                "recommendation": finding.recommendation,
+                "tags": list(finding.tags),
+            },
+        }
+        if finding.false_positive_note:
+            result["properties"]["falsePositiveNote"] = finding.false_positive_note
+        if finding.evidence:
+            result["partialFingerprints"] = {"evidenceSnippet": finding.evidence}
+
+        locations = _sarif_locations(finding)
+        if locations:
+            result["locations"] = locations
+
+        results.append(result)
+
+    payload = {
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "cryptologik",
+                        "informationUri": "https://github.com/hiagokinlevi/cryptologik",
+                        "semanticVersion": "1.0.0",
+                        "rules": list(rules_by_id.values()),
+                    }
+                },
+                "automationDetails": {"id": summary.assessment_id},
+                "invocations": [
+                    {
+                        "executionSuccessful": True,
+                        "properties": {
+                            "targetDescription": summary.target_description,
+                            "assessmentProfile": summary.assessment_profile,
+                            "generatedAt": datetime.now(timezone.utc).isoformat(),
+                        },
+                    }
+                ],
+                "results": results,
+            }
+        ],
+    }
+
+    log.info(
+        "sarif_report_generated",
+        assessment_id=summary.assessment_id,
+        total_findings=summary.total_findings,
+        overall_risk=summary.overall_risk.value,
+    )
+    return json.dumps(payload, indent=2)
+
+
 def generate_markdown_report(
     summary: AssessmentSummary,
     verbosity: str = DEFAULT_VERBOSITY,
@@ -220,39 +512,27 @@ def generate_markdown_report(
     Returns:
         Markdown string containing the full report.
     """
-    all_findings: list[BaseFinding] = [
-        *summary.crypto_config_findings,
-        *summary.smart_contract_findings,
-        *summary.key_management_findings,
-    ]
+    all_findings = _collect_findings(summary)
 
-    # Sort findings by risk level (critical first)
-    risk_order = {
-        RiskLevel.CRITICAL: 0,
-        RiskLevel.HIGH: 1,
-        RiskLevel.MEDIUM: 2,
-        RiskLevel.LOW: 3,
-        RiskLevel.INFORMATIONAL: 4,
-    }
-    all_findings.sort(key=lambda f: risk_order.get(f.risk_level, 99))
+    generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    if Environment is None or BaseLoader is None:
+        report = _render_markdown_fallback(summary, all_findings, verbosity, generated_at)
+    else:
+        env = Environment(loader=BaseLoader(), autoescape=False)
+        env.tests["crypto_finding"] = lambda f: isinstance(f, CryptoConfigFinding)
+        env.tests["contract_finding"] = lambda f: isinstance(f, SmartContractFinding)
+        env.tests["km_finding"] = lambda f: isinstance(f, KeyManagementFinding)
 
-    # Build Jinja2 environment with custom tests
-    env = Environment(loader=BaseLoader(), autoescape=False)
-    env.tests["crypto_finding"] = lambda f: isinstance(f, CryptoConfigFinding)
-    env.tests["contract_finding"] = lambda f: isinstance(f, SmartContractFinding)
-    env.tests["km_finding"] = lambda f: isinstance(f, KeyManagementFinding)
-
-    template = env.from_string(_REPORT_TEMPLATE)
-
-    report = template.render(
-        summary=summary,
-        all_findings=all_findings,
-        verbosity=verbosity,
-        generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        overall_risk=_risk_badge(summary.overall_risk),
-        risk_badge=_risk_badge,
-        get_location=_get_location,
-    )
+        template = env.from_string(_REPORT_TEMPLATE)
+        report = template.render(
+            summary=summary,
+            all_findings=all_findings,
+            verbosity=verbosity,
+            generated_at=generated_at,
+            overall_risk=_risk_badge(summary.overall_risk),
+            risk_badge=_risk_badge,
+            get_location=_get_location,
+        )
 
     log.info(
         "report_generated",

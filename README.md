@@ -19,7 +19,7 @@
 - **Hybrid migration planning** — builds wave-based migration plans for assets with classical dependencies and future confidentiality requirements
 - **Policy baselines** — YAML-defined cryptographic baseline policies for org-wide enforcement
 - **Pydantic schemas** — machine-readable finding models for findings, crypto agility, post-quantum readiness, and migration plans
-- **CLI tooling** — review, assess, and report from the terminal
+- **CLI tooling** — review, assess, and report from the terminal, including SARIF export for CI and IDE pipelines
 
 This tool is for **defensive use** — it helps security engineers, auditors, and developers identify and remediate cryptographic weaknesses.
 
@@ -101,7 +101,10 @@ cryptologik assess-pqc-readiness --config examples/sample-configs/advanced-crypt
 cryptologik generate-migration-plan --config examples/sample-configs/advanced-crypto-program.yaml
 
 # Generate a combined report
-cryptologik generate-report --assessment-dir ./output --format markdown
+cryptologik generate-report --findings-json ./output/findings.json --format markdown
+
+# Export SARIF for GitHub code scanning or IDE ingestion
+cryptologik generate-report --findings-json ./output/findings.json --format sarif --output cryptologik.sarif
 ```
 
 ---
@@ -189,6 +192,14 @@ Reviews structured certificate metadata without making live network connections:
 | TLS-CV-005 | High | Missing intermediate certificates in a presented chain |
 | TLS-CV-008 | High | RSA keys below 2048 bits or EC keys below 256 bits |
 | TLS-CV-009 | Medium | Leaf certificates with validity periods above 398 days |
+
+### Reporting and CI Export
+
+`generate-report` can transform scanner findings into:
+
+- Markdown for human-readable reviews and remediation tracking
+- JSON for machine-readable post-processing
+- SARIF 2.1.0 for GitHub code scanning, IDE diagnostics, and CI/CD security pipelines
 
 ---
 

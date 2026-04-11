@@ -28,7 +28,7 @@
 
 - [ ] HTML report generation with risk heat maps
 - [ ] PDF export
-- [ ] SARIF output format for IDE and CI/CD integration
+- [x] SARIF output format for IDE and CI/CD integration
 - [ ] CycloneDX cryptographic bill of materials (CBOM) output
 
 ## v1.5 — Agility and PQC Foundations
