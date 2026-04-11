@@ -67,3 +67,16 @@ def test_review_tls_config_fail_on_high_returns_nonzero(tmp_path):
 
     assert result.exit_code != 0
     assert "fail-on=high" in result.output
+
+
+def test_review_tls_config_rejects_non_object_entries(tmp_path):
+    config_path = tmp_path / "tls-config.json"
+    config_path.write_text(json.dumps(["legacy"]), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        cli,
+        ["review-tls-config", "--config", str(config_path)],
+    )
+
+    assert result.exit_code != 0
+    assert "TLS config entry #1 must be a JSON object." in result.output

@@ -111,3 +111,16 @@ def test_assess_crypto_agility_cli_rejects_non_mapping_assets(tmp_path):
 
     assert result.exit_code == 1
     assert "Asset entry #1 must be an object" in result.output
+
+
+def test_assess_crypto_agility_cli_rejects_malformed_yaml(tmp_path):
+    config = tmp_path / "bad-program.yaml"
+    config.write_text("program_name: bad-demo\nassets:\n  - asset_id: one\n    :", encoding="utf-8")
+
+    result = CliRunner().invoke(
+        cli,
+        ["assess-crypto-agility", "--config", str(config)],
+    )
+
+    assert result.exit_code == 1
+    assert "Could not parse YAML configuration" in result.output

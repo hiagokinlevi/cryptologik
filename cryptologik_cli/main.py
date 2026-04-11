@@ -105,14 +105,55 @@ def cli() -> None:
     pass
 
 
+def _read_utf8_text(path: str, label: str) -> str:
+    """Read a UTF-8 text file and raise a stable CLI error on failure."""
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise click.ClickException(f"Could not decode {label} as UTF-8.") from exc
+    except OSError as exc:
+        message = exc.strerror or str(exc)
+        raise click.ClickException(f"Could not read {label}: {message}.") from exc
+
+
+def _load_json_document(path: str, label: str):
+    """Load a JSON document and convert parse errors into ClickException."""
+    try:
+        return json.loads(_read_utf8_text(path, label))
+    except json.JSONDecodeError as exc:
+        raise click.ClickException(
+            f"Could not parse {label}: {exc.msg} at line {exc.lineno}, column {exc.colno}."
+        ) from exc
+
+
+def _format_yaml_error(exc: yaml.YAMLError) -> str:
+    """Return a concise YAML parse error with line/column context when available."""
+    problem = getattr(exc, "problem", None) or str(exc)
+    mark = getattr(exc, "problem_mark", None)
+    if mark is None:
+        return problem
+    return f"{problem} at line {mark.line + 1}, column {mark.column + 1}"
+
+
 def _load_structured_document(path: str) -> dict:
     """Carrega um documento JSON ou YAML para os fluxos de analise offline."""
     file_path = Path(path)
-    raw = file_path.read_text(encoding="utf-8")
+    raw = _read_utf8_text(path, "configuration file")
     if file_path.suffix.lower() in {".yaml", ".yml"}:
-        loaded = yaml.safe_load(raw)
+        try:
+            loaded = yaml.safe_load(raw)
+        except yaml.YAMLError as exc:
+            raise click.ClickException(
+                f"Could not parse YAML configuration: {_format_yaml_error(exc)}."
+            ) from exc
     else:
-        loaded = json.loads(raw)
+        try:
+            loaded = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise click.ClickException(
+                "Could not parse JSON configuration: "
+                f"{exc.msg} at line {exc.lineno}, column {exc.colno}."
+            ) from exc
     if not isinstance(loaded, dict):
         raise click.ClickException("Expected a JSON/YAML object with metadata and an assets list.")
     return loaded
@@ -148,13 +189,7 @@ def _load_asset_profiles(path: str) -> tuple[str, list]:
 
 def _load_report_payload(path: str) -> list[dict]:
     """Load the report input file and reject malformed top-level payloads."""
-    try:
-        raw = json.loads(Path(path).read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise click.ClickException(
-            "Could not parse findings JSON: "
-            f"{exc.msg} at line {exc.lineno}, column {exc.colno}."
-        ) from exc
+    raw = _load_json_document(path, "findings JSON")
 
     if not isinstance(raw, list):
         raise click.ClickException(
@@ -323,17 +358,33 @@ def review_tls_config(config: str, output: Optional[str], fail_on: str) -> None:
     """Review offline TLS cipher suite and protocol configuration."""
     from crypto.cipher_suite_analyzer import CipherSuiteConfig, analyze_many
 
-    raw = json.loads(Path(config).read_text(encoding="utf-8"))
-    items = raw if isinstance(raw, list) else [raw]
-    configs = [
-        CipherSuiteConfig(
-            config_id=item["config_id"],
-            cipher_suites=list(item.get("cipher_suites", [])),
-            tls_versions=list(item.get("tls_versions", [])),
-            description=item.get("description", item["config_id"]),
+    raw = _load_json_document(config, "TLS configuration JSON")
+    if not isinstance(raw, (dict, list)):
+        raise click.ClickException(
+            "Expected TLS configuration JSON to contain an object or list of objects."
         )
-        for item in items
-    ]
+    items = raw if isinstance(raw, list) else [raw]
+    configs = []
+    for index, item in enumerate(items, start=1):
+        if not isinstance(item, dict):
+            raise click.ClickException(f"TLS config entry #{index} must be a JSON object.")
+        try:
+            configs.append(
+                CipherSuiteConfig(
+                    config_id=item["config_id"],
+                    cipher_suites=list(item.get("cipher_suites", [])),
+                    tls_versions=list(item.get("tls_versions", [])),
+                    description=item.get("description", item["config_id"]),
+                )
+            )
+        except KeyError as exc:
+            raise click.ClickException(
+                f"TLS config entry #{index} is missing required field: {exc.args[0]}."
+            ) from exc
+        except TypeError as exc:
+            raise click.ClickException(
+                f"TLS config entry #{index} is invalid: {exc}."
+            ) from exc
     results = analyze_many(configs)
 
     table = Table(title=f"TLS Config Results ({len(results)})", show_lines=True)

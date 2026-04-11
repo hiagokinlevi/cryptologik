@@ -120,3 +120,20 @@ def test_generate_report_rejects_invalid_entry_values(tmp_path):
     assert result.exit_code != 0
     assert "Finding entry #1 is invalid" in result.output
     assert "severe" in result.output
+
+
+def test_generate_report_rejects_non_utf8_input(tmp_path):
+    findings_path = tmp_path / "findings.json"
+    findings_path.write_bytes(b"\xff\xfe\x00")
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "generate-report",
+            "--findings-json",
+            str(findings_path),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "Could not decode findings JSON as UTF-8." in result.output
