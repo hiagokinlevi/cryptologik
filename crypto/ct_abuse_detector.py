@@ -318,25 +318,24 @@ class CTAbuseDetector:
         # CT-ABU-001: Mass issuance burst (per SLD within window)
         for sld, sld_group in sld_entries.items():
             if len(sld_group) >= self._mass_threshold:
-                # Check if all are within 24-hour window
                 timestamps = []
                 for e in sld_group:
                     ts = _parse_iso(e.not_before)
                     if ts:
                         timestamps.append(ts)
                 if len(timestamps) >= self._mass_threshold:
-                    timestamps.sort()
-                    span = timestamps[-1] - timestamps[0]
-                    if span <= timedelta(hours=_MASS_ISSUANCE_WINDOW_HOURS):
+                    window = self._find_mass_issuance_window(timestamps)
+                    if window is not None:
+                        burst_count, span = window
                         f = self._make_finding(
                             "CT-ABU-001", sld,
                             detail=(
-                                f"{len(sld_group)} certificates issued for SLD "
+                                f"{burst_count} certificates issued for SLD "
                                 f"'{sld}' within {span.total_seconds()/3600:.1f} hours. "
                                 "Rapid mass issuance is a strong indicator of automated "
                                 "phishing infrastructure deployment."
                             ),
-                            evidence=f"{len(sld_group)} certs in {span}",
+                            evidence=f"{burst_count} certs in {span}",
                         )
                         findings.append(f)
                         suspicious_domains.add(sld)
@@ -460,6 +459,24 @@ class CTAbuseDetector:
                     ))
 
         return findings
+
+    def _find_mass_issuance_window(
+        self,
+        timestamps: list[datetime],
+    ) -> tuple[int, timedelta] | None:
+        timestamps.sort()
+        window_limit = timedelta(hours=_MASS_ISSUANCE_WINDOW_HOURS)
+        start = 0
+
+        for end in range(len(timestamps)):
+            while timestamps[end] - timestamps[start] > window_limit:
+                start += 1
+
+            burst_count = end - start + 1
+            if burst_count >= self._mass_threshold:
+                return burst_count, timestamps[end] - timestamps[start]
+
+        return None
 
     @staticmethod
     def _make_finding(

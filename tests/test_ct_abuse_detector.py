@@ -228,6 +228,19 @@ class TestCTAbu001:
         report = det.analyze(entries)
         assert "CT-ABU-001" not in _check_ids(report)
 
+    def test_fires_for_threshold_burst_inside_larger_timespan(self):
+        det = _detector(mass_issuance_threshold=3)
+        entries = [
+            _entry("early.evil.com", not_before="2026-01-01T00:00:00"),
+            _entry("burst1.evil.com", not_before="2026-01-05T00:00:00"),
+            _entry("burst2.evil.com", not_before="2026-01-05T03:00:00"),
+            _entry("burst3.evil.com", not_before="2026-01-05T06:00:00"),
+        ]
+        report = det.analyze(entries)
+        finding = next(f for f in report.findings if f.check_id == "CT-ABU-001")
+        assert finding.domain == "evil"
+        assert finding.evidence == "3 certs in 6:00:00"
+
     def test_ct_abu_001_is_high(self):
         det = _detector(mass_issuance_threshold=2)
         entries = [
