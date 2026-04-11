@@ -466,7 +466,10 @@ def review_tls_config(config: str, output: Optional[str], fail_on: str) -> None:
 )
 def review_key_posture(config: str, output: Optional[str]) -> None:
     """Review key management posture from a YAML configuration file."""
-    from crypto.key_management.posture_checker import check_key_management_posture
+    from crypto.key_management.posture_checker import (
+        KeyManagementConfigError,
+        check_key_management_posture,
+    )
 
     console.print(Panel.fit(
         f"[bold]Config:[/bold] {config}\n"
@@ -474,7 +477,10 @@ def review_key_posture(config: str, output: Optional[str]) -> None:
         title="[bold cyan]cryptologik — Key Management Posture Review[/bold cyan]",
     ))
 
-    findings = check_key_management_posture(Path(config))
+    try:
+        findings = check_key_management_posture(Path(config))
+    except KeyManagementConfigError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     if not findings:
         console.print("[green]No key management posture issues detected.[/green]")

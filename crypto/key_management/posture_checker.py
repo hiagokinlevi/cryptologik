@@ -58,6 +58,10 @@ class PostureFinding:
     evidence: str = ""      # Relevant config excerpt (masked if sensitive)
 
 
+class KeyManagementConfigError(ValueError):
+    """Raised when the posture checker cannot safely load the input config."""
+
+
 # ---------------------------------------------------------------------------
 # Individual posture checks
 # ---------------------------------------------------------------------------
@@ -271,6 +275,52 @@ def _check_access_control(key_name: str, key_config: dict[str, Any]) -> list[Pos
     return findings
 
 
+def _format_yaml_error(exc: yaml.YAMLError) -> str:
+    """Return a concise YAML error with line and column context when available."""
+    problem = getattr(exc, "problem", None) or str(exc)
+    mark = getattr(exc, "problem_mark", None)
+    if mark is None:
+        return problem
+    return f"{problem} at line {mark.line + 1}, column {mark.column + 1}"
+
+
+def _load_key_management_config(config_path: Path) -> dict[str, Any]:
+    """Load and validate the posture config, failing closed on malformed input."""
+    try:
+        raw = config_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise KeyManagementConfigError("Could not decode key management config as UTF-8.") from exc
+    except OSError as exc:
+        message = exc.strerror or str(exc)
+        raise KeyManagementConfigError(f"Could not read key management config: {message}.") from exc
+
+    try:
+        config = yaml.safe_load(raw)
+    except yaml.YAMLError as exc:
+        raise KeyManagementConfigError(
+            f"Could not parse key management YAML: {_format_yaml_error(exc)}."
+        ) from exc
+
+    if not isinstance(config, dict):
+        raise KeyManagementConfigError(
+            "Expected key management YAML to contain a top-level mapping."
+        )
+
+    keys = config.get("keys")
+    if not isinstance(keys, dict) or not keys:
+        raise KeyManagementConfigError(
+            "Key management configuration must include a non-empty top-level 'keys' mapping."
+        )
+
+    for key_name, key_config in keys.items():
+        if not isinstance(key_config, dict):
+            raise KeyManagementConfigError(
+                f"Key entry '{key_name}' must be a mapping of posture attributes."
+            )
+
+    return config
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -299,23 +349,11 @@ def check_key_management_posture(config_path: Path) -> list[PostureFinding]:
     Returns:
         List of PostureFinding objects. Empty list means no issues detected.
     """
-    try:
-        with open(config_path, encoding="utf-8") as f:
-            config = yaml.safe_load(f)
-    except (OSError, yaml.YAMLError) as e:
-        log.error("failed_to_load_key_config", path=str(config_path), error=str(e))
-        return []
-
-    if not config or "keys" not in config:
-        log.warning("no_keys_section_in_config", path=str(config_path))
-        return []
+    config = _load_key_management_config(config_path)
 
     all_findings: list[PostureFinding] = []
 
     for key_name, key_config in config["keys"].items():
-        if not isinstance(key_config, dict):
-            continue
-
         # Run all checks for this key
         all_findings.extend(_check_rotation_policy(key_name, key_config))
         all_findings.extend(_check_storage_location(key_name, key_config))
