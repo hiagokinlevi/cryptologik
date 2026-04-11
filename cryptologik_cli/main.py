@@ -29,6 +29,7 @@ from typing import Optional
 
 import click
 import yaml
+from pydantic import ValidationError
 
 try:
     from dotenv import load_dotenv
@@ -126,7 +127,23 @@ def _load_asset_profiles(path: str) -> tuple[str, list]:
     if not isinstance(assets_raw, list) or not assets_raw:
         raise click.ClickException("Configuration must include a non-empty 'assets' list.")
     target_name = str(loaded.get("program_name") or loaded.get("target_name") or Path(path).stem)
-    return target_name, [CryptoAssetProfile(**item) for item in assets_raw]
+    assets: list[CryptoAssetProfile] = []
+    for index, item in enumerate(assets_raw, start=1):
+        if not isinstance(item, dict):
+            raise click.ClickException(
+                f"Asset entry #{index} must be an object with CryptoAssetProfile fields."
+            )
+        try:
+            assets.append(CryptoAssetProfile(**item))
+        except ValidationError as exc:
+            details = "; ".join(
+                f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+                for error in exc.errors()
+            )
+            raise click.ClickException(
+                f"Asset entry #{index} is invalid: {details}"
+            ) from exc
+    return target_name, assets
 
 
 # ---------------------------------------------------------------------------

@@ -95,3 +95,19 @@ def test_generate_migration_plan_cli_writes_sorted_plan(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload[0]["asset_id"] == "archive"
     assert payload[0]["migration_wave"] == 1
+
+
+def test_assess_crypto_agility_cli_rejects_non_mapping_assets(tmp_path):
+    config = tmp_path / "bad-program.yaml"
+    config.write_text(
+        yaml.safe_dump({"program_name": "bad-demo", "assets": ["oops"]}, sort_keys=False),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        cli,
+        ["assess-crypto-agility", "--config", str(config)],
+    )
+
+    assert result.exit_code == 1
+    assert "Asset entry #1 must be an object" in result.output
