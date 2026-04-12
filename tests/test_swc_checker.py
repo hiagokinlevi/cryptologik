@@ -18,6 +18,7 @@ import pytest
 from blockchain.smart_contracts.review_checklist import (
     ContractFinding,
     ContractFindingRisk,
+    ContractSourceError,
     SmartContractReviewRunner,
     SMART_CONTRACT_CHECKLIST,
 )
@@ -193,6 +194,22 @@ class TestErrorHandling:
         runner = SmartContractReviewRunner()
         with pytest.raises(FileNotFoundError):
             runner.review(Path("/tmp/does_not_exist_contract_12345.sol"))
+
+    def test_invalid_utf8_contract_raises(self, tmp_path):
+        """Invalid UTF-8 should fail closed instead of silently ignoring bytes."""
+        runner = SmartContractReviewRunner()
+        path = tmp_path / "bad.sol"
+        path.write_bytes(b"\xff\xfepragma solidity ^0.8.0;")
+
+        with pytest.raises(ContractSourceError, match="not valid UTF-8"):
+            runner.review(path)
+
+    def test_directory_contract_raises(self, tmp_path):
+        """Directory inputs should fail closed instead of returning a clean result."""
+        runner = SmartContractReviewRunner()
+
+        with pytest.raises(ContractSourceError, match="not a regular file"):
+            runner.review(tmp_path)
 
 
 # ---------------------------------------------------------------------------

@@ -38,6 +38,10 @@ class ContractFindingRisk(str, Enum):
     INFORMATIONAL = "informational"
 
 
+class ContractSourceError(ValueError):
+    """Raised when a contract source file cannot be safely read."""
+
+
 @dataclass
 class ContractFinding:
     """A finding from the smart contract security review checklist."""
@@ -269,14 +273,27 @@ class SmartContractReviewRunner:
 
         Raises:
             FileNotFoundError: If the contract file does not exist.
+            ContractSourceError: If the contract path is not a readable UTF-8 text file.
         """
         if not contract_path.exists():
             raise FileNotFoundError(f"Contract not found: {contract_path}")
 
+        if not contract_path.is_file():
+            raise ContractSourceError(
+                f"Contract path is not a regular file: {contract_path}"
+            )
+
         try:
-            source = contract_path.read_text(encoding="utf-8", errors="ignore")
-        except OSError:
-            return []
+            source = contract_path.read_text(encoding="utf-8")
+        except UnicodeDecodeError as exc:
+            raise ContractSourceError(
+                f"Contract source is not valid UTF-8: {contract_path}"
+            ) from exc
+        except OSError as exc:
+            message = exc.strerror or str(exc)
+            raise ContractSourceError(
+                f"Could not read contract source '{contract_path}': {message}."
+            ) from exc
 
         findings: list[ContractFinding] = []
         lines = source.splitlines()

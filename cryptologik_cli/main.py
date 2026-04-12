@@ -538,7 +538,10 @@ def review_key_posture(config: str, output: Optional[str]) -> None:
 )
 def review_contract_checklist(contract: str, output: Optional[str]) -> None:
     """Run the smart contract security checklist against a Solidity file."""
-    from blockchain.smart_contracts.review_checklist import SmartContractReviewRunner
+    from blockchain.smart_contracts.review_checklist import (
+        ContractSourceError,
+        SmartContractReviewRunner,
+    )
 
     console.print(Panel.fit(
         f"[bold]Contract:[/bold] {contract}\n"
@@ -547,7 +550,10 @@ def review_contract_checklist(contract: str, output: Optional[str]) -> None:
     ))
 
     runner = SmartContractReviewRunner()
-    findings = runner.review(Path(contract))
+    try:
+        findings = runner.review(Path(contract))
+    except ContractSourceError as exc:
+        raise click.ClickException(str(exc)) from exc
 
     if not findings:
         console.print("[green]No checklist items triggered.[/green]")
