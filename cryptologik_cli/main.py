@@ -169,13 +169,14 @@ def _load_asset_profiles(path: str) -> tuple[str, list]:
         raise click.ClickException("Configuration must include a non-empty 'assets' list.")
     target_name = str(loaded.get("program_name") or loaded.get("target_name") or Path(path).stem)
     assets: list[CryptoAssetProfile] = []
+    seen_asset_ids: dict[str, int] = {}
     for index, item in enumerate(assets_raw, start=1):
         if not isinstance(item, dict):
             raise click.ClickException(
                 f"Asset entry #{index} must be an object with CryptoAssetProfile fields."
             )
         try:
-            assets.append(CryptoAssetProfile(**item))
+            asset = CryptoAssetProfile(**item)
         except ValidationError as exc:
             details = "; ".join(
                 f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
@@ -184,6 +185,13 @@ def _load_asset_profiles(path: str) -> tuple[str, list]:
             raise click.ClickException(
                 f"Asset entry #{index} is invalid: {details}"
             ) from exc
+        previous_index = seen_asset_ids.get(asset.asset_id)
+        if previous_index is not None:
+            raise click.ClickException(
+                f"Asset entry #{index} duplicates asset_id '{asset.asset_id}' from entry #{previous_index}."
+            )
+        seen_asset_ids[asset.asset_id] = index
+        assets.append(asset)
     return target_name, assets
 
 

@@ -72,6 +72,28 @@ class CryptoAssetProfile(BaseModel):
     long_term_confidentiality: bool = Field(default=False)
     data_retention_years: int = Field(default=0, ge=0)
 
+    @field_validator("asset_id", "asset_name", "asset_type", "environment", mode="before")
+    @classmethod
+    def normaliza_campos_textuais(cls, value: str | None) -> str | None:
+        """Remove whitespace de borda e rejeita strings semanticamente vazias."""
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("value cannot be blank")
+        return normalized
+
+    @field_validator("owner_hint", mode="before")
+    @classmethod
+    def normaliza_owner_hint(cls, value: str | None) -> str | None:
+        """Converte owner_hint vazio em None para manter a entrada opcional."""
+        if value is None or not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        return normalized or None
+
     @field_validator("current_primitives", "hardcoded_algorithm_dependencies")
     @classmethod
     def normaliza_primitivas(cls, value: list[str]) -> list[str]:

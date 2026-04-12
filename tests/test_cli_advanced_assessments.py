@@ -113,6 +113,85 @@ def test_assess_crypto_agility_cli_rejects_non_mapping_assets(tmp_path):
     assert "Asset entry #1 must be an object" in result.output
 
 
+def test_assess_crypto_agility_cli_rejects_duplicate_asset_ids(tmp_path):
+    config = tmp_path / "bad-program.yaml"
+    payload = {
+        "program_name": "bad-demo",
+        "assets": [
+            {
+                "asset_id": "archive",
+                "asset_name": "archive-primary",
+                "asset_type": "archive",
+            },
+            {
+                "asset_id": "archive",
+                "asset_name": "archive-shadow",
+                "asset_type": "archive",
+            },
+        ],
+    }
+    config.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        cli,
+        ["assess-crypto-agility", "--config", str(config)],
+    )
+
+    assert result.exit_code == 1
+    assert "duplicates asset_id 'archive' from entry #1" in result.output
+
+
+def test_assess_crypto_agility_cli_rejects_duplicate_asset_ids_after_trim(tmp_path):
+    config = tmp_path / "bad-program.yaml"
+    payload = {
+        "program_name": "bad-demo",
+        "assets": [
+            {
+                "asset_id": " archive ",
+                "asset_name": "archive-primary",
+                "asset_type": "archive",
+            },
+            {
+                "asset_id": "archive",
+                "asset_name": "archive-shadow",
+                "asset_type": "archive",
+            },
+        ],
+    }
+    config.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        cli,
+        ["assess-crypto-agility", "--config", str(config)],
+    )
+
+    assert result.exit_code == 1
+    assert "duplicates asset_id 'archive' from entry #1" in result.output
+
+
+def test_assess_crypto_agility_cli_rejects_blank_asset_id_after_trim(tmp_path):
+    config = tmp_path / "bad-program.yaml"
+    payload = {
+        "program_name": "bad-demo",
+        "assets": [
+            {
+                "asset_id": "   ",
+                "asset_name": "archive-primary",
+                "asset_type": "archive",
+            },
+        ],
+    }
+    config.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        cli,
+        ["assess-crypto-agility", "--config", str(config)],
+    )
+
+    assert result.exit_code == 1
+    assert "asset_id: Value error, value cannot be blank" in result.output
+
+
 def test_assess_crypto_agility_cli_rejects_malformed_yaml(tmp_path):
     config = tmp_path / "bad-program.yaml"
     config.write_text("program_name: bad-demo\nassets:\n  - asset_id: one\n    :", encoding="utf-8")
