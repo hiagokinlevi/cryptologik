@@ -23,6 +23,7 @@ Usage:
 
 import json
 import os
+import stat
 import sys
 from pathlib import Path
 from typing import Optional
@@ -107,8 +108,25 @@ def cli() -> None:
 
 def _read_utf8_text(path: str, label: str) -> str:
     """Read a UTF-8 text file and raise a stable CLI error on failure."""
+    file_path = Path(path)
+
     try:
-        return Path(path).read_text(encoding="utf-8")
+        file_mode = file_path.lstat().st_mode
+    except OSError as exc:
+        message = exc.strerror or str(exc)
+        raise click.ClickException(f"Could not read {label}: {message}.") from exc
+
+    if stat.S_ISLNK(file_mode):
+        raise click.ClickException(
+            f"Could not read {label}: symlinked files are not allowed."
+        )
+    if not stat.S_ISREG(file_mode):
+        raise click.ClickException(
+            f"Could not read {label}: path must be a regular file."
+        )
+
+    try:
+        return file_path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
         raise click.ClickException(f"Could not decode {label} as UTF-8.") from exc
     except OSError as exc:

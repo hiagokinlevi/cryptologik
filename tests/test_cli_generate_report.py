@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from click.testing import CliRunner
 
@@ -137,3 +138,22 @@ def test_generate_report_rejects_non_utf8_input(tmp_path):
 
     assert result.exit_code != 0
     assert "Could not decode findings JSON as UTF-8." in result.output
+
+
+def test_generate_report_rejects_symlinked_input(tmp_path: Path):
+    findings_path = tmp_path / "findings.json"
+    findings_path.write_text("[]", encoding="utf-8")
+    symlink_path = tmp_path / "findings-link.json"
+    symlink_path.symlink_to(findings_path)
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "generate-report",
+            "--findings-json",
+            str(symlink_path),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "symlinked files are not allowed" in result.output

@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from click.testing import CliRunner
 
@@ -124,3 +125,27 @@ def test_review_tls_config_rejects_non_string_tls_version_items(tmp_path):
 
     assert result.exit_code != 0
     assert "field 'tls_versions' item #2 must be a string." in result.output
+
+
+def test_review_tls_config_rejects_symlinked_config(tmp_path: Path):
+    config_path = tmp_path / "tls-config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "config_id": "modern",
+                "cipher_suites": ["TLS_AES_256_GCM_SHA384"],
+                "tls_versions": ["TLSv1.3"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    symlink_path = tmp_path / "tls-config-link.json"
+    symlink_path.symlink_to(config_path)
+
+    result = CliRunner().invoke(
+        cli,
+        ["review-tls-config", "--config", str(symlink_path)],
+    )
+
+    assert result.exit_code != 0
+    assert "symlinked files are not allowed" in result.output
