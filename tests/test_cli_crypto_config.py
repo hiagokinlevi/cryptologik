@@ -91,3 +91,20 @@ func build() *tls.Config {
     assert len(payload) == 1
     assert payload[0]["check_name"] == "go_tls_legacy_min_version"
     assert payload[0]["risk_level"] == "high"
+
+
+def test_review_crypto_config_rejects_invalid_utf8_source(tmp_path):
+    source = tmp_path / "broken.py"
+    source.write_bytes(b"\xff\xfe\nresult = hashlib.md5(data)\n")
+
+    result = CliRunner().invoke(
+        cli,
+        [
+            "review-crypto-config",
+            "--path",
+            str(source),
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "Could not decode source file as UTF-8" in result.output

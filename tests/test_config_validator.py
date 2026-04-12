@@ -6,7 +6,7 @@ These tests validate:
   - Files with no issues return empty findings
   - CryptoRisk levels are correctly assigned
   - False positive annotations are present for ambiguous patterns
-  - File read errors return empty findings (not exceptions)
+  - File read and decode errors fail closed with explicit exceptions
   - Evidence is truncated appropriately
 """
 
@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from crypto.validators.config_validator import (
+    CryptoConfigScanError,
     CryptoFinding,
     CryptoRisk,
     validate_crypto_config,
@@ -150,20 +151,20 @@ def encrypt(key: bytes, data: bytes, nonce: bytes) -> bytes:
 # ---------------------------------------------------------------------------
 
 class TestErrorHandling:
-    def test_nonexistent_file_returns_empty(self):
-        """A nonexistent file path should return empty findings without raising."""
-        findings = validate_crypto_config(Path("/tmp/does_not_exist_12345.py"))
-        assert findings == []
+    def test_nonexistent_file_raises_scan_error(self):
+        """A nonexistent file path should fail closed instead of being skipped."""
+        with pytest.raises(CryptoConfigScanError, match="Could not read source file"):
+            validate_crypto_config(Path("/tmp/does_not_exist_12345.py"))
 
-    def test_binary_file_returns_empty(self):
-        """A binary file should return empty findings without raising."""
+    def test_invalid_utf8_file_raises_scan_error(self):
+        """Malformed UTF-8 should fail closed so findings cannot be hidden."""
         import tempfile
-        with tempfile.NamedTemporaryFile(suffix=".bin", delete=False) as f:
-            f.write(b"\x00\x01\x02\x03\xff\xfe\xfd")
+        with tempfile.NamedTemporaryFile(suffix=".py", delete=False) as f:
+            f.write(b"\xff\xfe\nresult = hashlib.md5(data)\n")
             path = Path(f.name)
 
-        findings = validate_crypto_config(path)
-        assert isinstance(findings, list)
+        with pytest.raises(CryptoConfigScanError, match="Could not decode source file as UTF-8"):
+            validate_crypto_config(path)
 
 
 # ---------------------------------------------------------------------------

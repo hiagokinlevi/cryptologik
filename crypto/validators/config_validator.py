@@ -59,6 +59,10 @@ class PatternSpec:
     specificity: int = 1
 
 
+class CryptoConfigScanError(ValueError):
+    """Raised when a source file cannot be safely scanned."""
+
+
 def _compile(pattern: str) -> re.Pattern[str]:
     """Compila uma regex no modo case-insensitive."""
 
@@ -351,13 +355,26 @@ def _mask_evidence(line: str) -> str:
     return line.strip()[:100]
 
 
+def _read_source_text(file_path: Path) -> str:
+    """Read source text strictly so malformed bytes cannot hide findings."""
+
+    try:
+        return file_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise CryptoConfigScanError(
+            f"Could not decode source file as UTF-8: {file_path}."
+        ) from exc
+    except OSError as exc:
+        message = exc.strerror or str(exc)
+        raise CryptoConfigScanError(
+            f"Could not read source file {file_path}: {message}."
+        ) from exc
+
+
 def validate_crypto_config(file_path: Path) -> list[CryptoFinding]:
     """Escaneia um arquivo de codigo em busca de anti-patterns criptograficos."""
 
-    try:
-        content = file_path.read_text(encoding="utf-8", errors="ignore")
-    except OSError:
-        return []
+    content = _read_source_text(file_path)
 
     suffix = file_path.suffix.lower()
     findings: list[CryptoFinding] = []

@@ -277,7 +277,7 @@ def _require_string_list(value: object, *, field_name: str, entry_index: int) ->
 )
 def review_crypto_config(path: str, ext: str, output: Optional[str], strictness: str) -> None:
     """Scan source files for cryptographic configuration anti-patterns."""
-    from crypto.validators.config_validator import validate_crypto_config
+    from crypto.validators.config_validator import CryptoConfigScanError, validate_crypto_config
 
     scan_path = Path(path)
     extensions = {f".{e.strip().lstrip('.')}" for e in ext.split(",")}
@@ -300,7 +300,10 @@ def review_crypto_config(path: str, ext: str, output: Optional[str], strictness:
 
     all_findings = []
     for file in files:
-        findings = validate_crypto_config(file)
+        try:
+            findings = validate_crypto_config(file)
+        except CryptoConfigScanError as exc:
+            raise click.ClickException(str(exc)) from exc
         all_findings.extend(findings)
     all_findings = [
         finding
