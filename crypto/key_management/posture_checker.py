@@ -22,6 +22,7 @@ LIMITATIONS:
 from __future__ import annotations
 
 import os
+import stat
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -284,8 +285,29 @@ def _format_yaml_error(exc: yaml.YAMLError) -> str:
     return f"{problem} at line {mark.line + 1}, column {mark.column + 1}"
 
 
+def _assert_regular_config_file(config_path: Path) -> None:
+    """Reject symlinks and special filesystem nodes before reading YAML content."""
+    if not config_path.exists():
+        raise FileNotFoundError(f"Key management config not found: {config_path}")
+
+    try:
+        node_stat = config_path.lstat()
+    except OSError as exc:
+        message = exc.strerror or str(exc)
+        raise KeyManagementConfigError(
+            f"Could not inspect key management config: {message}."
+        ) from exc
+
+    if not stat.S_ISREG(node_stat.st_mode):
+        raise KeyManagementConfigError(
+            f"Key management config path is not a regular file: {config_path}"
+        )
+
+
 def _load_key_management_config(config_path: Path) -> dict[str, Any]:
     """Load and validate the posture config, failing closed on malformed input."""
+    _assert_regular_config_file(config_path)
+
     try:
         raw = config_path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:

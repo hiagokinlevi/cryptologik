@@ -1,3 +1,5 @@
+import os
+
 import yaml
 
 from click.testing import CliRunner
@@ -75,3 +77,40 @@ def test_review_key_posture_rejects_non_mapping_key_entry(tmp_path):
 
     assert result.exit_code != 0
     assert "payments-api" in result.output
+
+
+def test_review_key_posture_rejects_symlinked_config(tmp_path):
+    target_path = tmp_path / "keys.yaml"
+    target_path.write_text(
+        yaml.safe_dump(
+            {"keys": {"payments-api": {"storage": {"location": "hsm"}}}},
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    link_path = tmp_path / "linked-keys.yaml"
+    link_path.symlink_to(target_path)
+
+    result = CliRunner().invoke(
+        cli,
+        ["review-key-posture", "--config", str(link_path)],
+    )
+
+    assert result.exit_code != 0
+    assert "not a regular file" in result.output
+
+
+def test_review_key_posture_rejects_fifo_config(tmp_path):
+    if not hasattr(os, "mkfifo"):
+        return
+
+    fifo_path = tmp_path / "keys.yaml"
+    os.mkfifo(fifo_path)
+
+    result = CliRunner().invoke(
+        cli,
+        ["review-key-posture", "--config", str(fifo_path)],
+    )
+
+    assert result.exit_code != 0
+    assert "not a regular file" in result.output

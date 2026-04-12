@@ -25,6 +25,7 @@ For production deployments:
 from __future__ import annotations
 
 import re
+import stat
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -275,13 +276,7 @@ class SmartContractReviewRunner:
             FileNotFoundError: If the contract file does not exist.
             ContractSourceError: If the contract path is not a readable UTF-8 text file.
         """
-        if not contract_path.exists():
-            raise FileNotFoundError(f"Contract not found: {contract_path}")
-
-        if not contract_path.is_file():
-            raise ContractSourceError(
-                f"Contract path is not a regular file: {contract_path}"
-            )
+        self._assert_regular_contract_path(contract_path)
 
         try:
             source = contract_path.read_text(encoding="utf-8")
@@ -333,3 +328,22 @@ class SmartContractReviewRunner:
         print(tabulate(rows, headers=["SWC", "Title", "Risk", "Line"], tablefmt="github"))
         print(f"\nTotal findings: {len(findings)}")
         print("\nNOTE: All findings require manual verification before being treated as confirmed vulnerabilities.")
+
+    @staticmethod
+    def _assert_regular_contract_path(contract_path: Path) -> None:
+        """Reject symlinks and other special filesystem nodes before reading source."""
+        if not contract_path.exists():
+            raise FileNotFoundError(f"Contract not found: {contract_path}")
+
+        try:
+            node_stat = contract_path.lstat()
+        except OSError as exc:
+            message = exc.strerror or str(exc)
+            raise ContractSourceError(
+                f"Could not inspect contract source '{contract_path}': {message}."
+            ) from exc
+
+        if not stat.S_ISREG(node_stat.st_mode):
+            raise ContractSourceError(
+                f"Contract path is not a regular file: {contract_path}"
+            )

@@ -10,6 +10,7 @@ These tests validate:
   - File not found raises FileNotFoundError
 """
 
+import os
 import tempfile
 from pathlib import Path
 
@@ -210,6 +211,29 @@ class TestErrorHandling:
 
         with pytest.raises(ContractSourceError, match="not a regular file"):
             runner.review(tmp_path)
+
+    def test_symlink_contract_raises(self, tmp_path):
+        """Symlinked contract paths should be rejected before reading external files."""
+        runner = SmartContractReviewRunner()
+        target_path = tmp_path / "real.sol"
+        target_path.write_text("pragma solidity ^0.8.0;\ncontract Safe {}", encoding="utf-8")
+        link_path = tmp_path / "linked.sol"
+        link_path.symlink_to(target_path)
+
+        with pytest.raises(ContractSourceError, match="not a regular file"):
+            runner.review(link_path)
+
+    def test_fifo_contract_raises(self, tmp_path):
+        """Special files such as FIFOs should fail closed instead of blocking on reads."""
+        if not hasattr(os, "mkfifo"):
+            pytest.skip("mkfifo is unavailable on this platform")
+
+        runner = SmartContractReviewRunner()
+        fifo_path = tmp_path / "stream.sol"
+        os.mkfifo(fifo_path)
+
+        with pytest.raises(ContractSourceError, match="not a regular file"):
+            runner.review(fifo_path)
 
 
 # ---------------------------------------------------------------------------
