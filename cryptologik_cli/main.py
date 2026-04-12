@@ -134,6 +134,43 @@ def _read_utf8_text(path: str, label: str) -> str:
         raise click.ClickException(f"Could not read {label}: {message}.") from exc
 
 
+def _write_utf8_text(path: str, contents: str, label: str) -> None:
+    """Write a UTF-8 text file while rejecting symlinked or special destinations."""
+    file_path = Path(path)
+
+    for candidate in (file_path, *file_path.parents):
+        if not candidate.exists():
+            continue
+        try:
+            candidate_mode = candidate.lstat().st_mode
+        except OSError as exc:
+            message = exc.strerror or str(exc)
+            raise click.ClickException(f"Could not write {label}: {message}.") from exc
+
+        if stat.S_ISLNK(candidate_mode):
+            path_kind = "file" if candidate == file_path else "directory"
+            path_label = f"{path_kind}s" if path_kind == "file" else "directories"
+            raise click.ClickException(
+                f"Could not write {label}: symlinked {path_label} are not allowed."
+            )
+        if candidate == file_path:
+            if not stat.S_ISREG(candidate_mode):
+                raise click.ClickException(
+                    f"Could not write {label}: path must be a regular file."
+                )
+            continue
+        if not stat.S_ISDIR(candidate_mode):
+            raise click.ClickException(
+                f"Could not write {label}: parent path must be a directory."
+            )
+
+    try:
+        file_path.write_text(contents, encoding="utf-8")
+    except OSError as exc:
+        message = exc.strerror or str(exc)
+        raise click.ClickException(f"Could not write {label}: {message}.") from exc
+
+
 def _load_json_document(path: str, label: str):
     """Load a JSON document and convert parse errors into ClickException."""
     try:
@@ -369,7 +406,7 @@ def review_crypto_config(path: str, ext: str, output: Optional[str], strictness:
             }
             for f in all_findings
         ]
-        Path(output).write_text(json.dumps(findings_json, indent=2), encoding="utf-8")
+        _write_utf8_text(output, json.dumps(findings_json, indent=2), "findings output")
         console.print(f"[dim]Findings written to: {output}[/dim]")
 
 
@@ -460,7 +497,7 @@ def review_tls_config(config: str, output: Optional[str], fail_on: str) -> None:
 
     result_dicts = [result.to_dict() for result in results]
     if output:
-        Path(output).write_text(json.dumps(result_dicts, indent=2), encoding="utf-8")
+        _write_utf8_text(output, json.dumps(result_dicts, indent=2), "TLS analysis output")
         console.print(f"[dim]TLS analysis written to: {output}[/dim]")
 
     severity_rank = {"CRITICAL": 3, "HIGH": 2}
@@ -545,7 +582,7 @@ def review_key_posture(config: str, output: Optional[str]) -> None:
             }
             for f in findings
         ]
-        Path(output).write_text(json.dumps(findings_json, indent=2), encoding="utf-8")
+        _write_utf8_text(output, json.dumps(findings_json, indent=2), "findings output")
         console.print(f"[dim]Findings written to: {output}[/dim]")
 
 
@@ -620,7 +657,7 @@ def review_contract_checklist(contract: str, output: Optional[str]) -> None:
             }
             for f in findings
         ]
-        Path(output).write_text(json.dumps(findings_json, indent=2), encoding="utf-8")
+        _write_utf8_text(output, json.dumps(findings_json, indent=2), "findings output")
         console.print(f"[dim]Findings written to: {output}[/dim]")
 
 
@@ -666,7 +703,7 @@ def assess_crypto_agility_command(config: str, output: Optional[str]) -> None:
     console.print(actions)
 
     if output:
-        Path(output).write_text(result.model_dump_json(indent=2), encoding="utf-8")
+        _write_utf8_text(output, result.model_dump_json(indent=2), "assessment output")
         console.print(f"[dim]Assessment written to: {output}[/dim]")
 
 
@@ -714,7 +751,7 @@ def assess_pqc_readiness_command(config: str, output: Optional[str]) -> None:
     console.print(actions)
 
     if output:
-        Path(output).write_text(result.model_dump_json(indent=2), encoding="utf-8")
+        _write_utf8_text(output, result.model_dump_json(indent=2), "readiness output")
         console.print(f"[dim]Readiness result written to: {output}[/dim]")
 
 
@@ -762,7 +799,7 @@ def generate_migration_plan_command(config: str, output: Optional[str]) -> None:
 
     if output:
         serialized = [item.model_dump(mode="json") for item in plan]
-        Path(output).write_text(json.dumps(serialized, indent=2), encoding="utf-8")
+        _write_utf8_text(output, json.dumps(serialized, indent=2), "migration plan output")
         console.print(f"[dim]Migration plan written to: {output}[/dim]")
 
 
@@ -846,7 +883,7 @@ def generate_report(
         report = summary.model_dump_json(indent=2)
 
     if output:
-        Path(output).write_text(report, encoding="utf-8")
+        _write_utf8_text(output, report, "report output")
         console.print(f"[green]Report written to:[/green] {output}")
     else:
         console.print(report)
