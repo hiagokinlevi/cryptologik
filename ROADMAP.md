@@ -41,36 +41,7 @@
 
 ## v1.6 — Protocol and Long-Term Risk
 
-- [ ] Protocol security review engine for handshake, downgrade, and trust-boundary analysis
-- [ ] Long-term confidentiality report generator with retention-aware prioritization
-- [ ] Quantum-safe executive summary report template
-- [ ] Environment-aware migration baselines (dev, staging, production, regulated)
+- [ ] Protocol security review engine for
 
-## v2.0 — Continuous Monitoring
-
-- [ ] GitHub Actions integration for PR-level crypto review
-- [ ] Pre-commit hook for developer-time crypto scanning
-- [ ] Policy-as-code enforcement (fail CI if critical findings exceed threshold)
-- [ ] Trend dashboard (finding counts over time per codebase)
-
----
-
-## Completed
-
-- [x] Cryptographic configuration validator (MD5, SHA-1, DES, RC4, ECB, weak PRNG)
-- [x] Language-aware crypto validator coverage for Java, Go, and JavaScript/TypeScript
-- [x] Key management posture checker
-- [x] Smart contract review checklist with SWC mappings
-- [x] SWC reference YAML (selected critical entries)
-- [x] Wallet security checklist
-- [x] Custody security guide
-- [x] Standard cryptographic baseline policy
-- [x] Pydantic finding schemas
-- [x] Markdown report generator
-- [x] Click CLI (review-crypto-config, review-key-posture, review-contract-checklist, generate-report)
-- [x] Offline TLS configuration scanner with CI fail thresholds
-- [x] Advanced CLI workflows for crypto agility, post-quantum readiness, and migration planning
-
----
-
-Community suggestions are welcome via GitHub Discussions.
+## Automated Completions
+- [x] Initialize Python CLI entrypoint (cycle 1)
