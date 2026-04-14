@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Union
@@ -68,18 +69,18 @@ RISK_BADGES = {
 # Jinja2 template for the full report
 _REPORT_TEMPLATE = """# Cryptographic Security Assessment Report
 
-**Target:** {{ summary.target_description }}
-**Assessment ID:** {{ summary.assessment_id }}
+**Target:** {{ summary.target_description | md_inline }}
+**Assessment ID:** {{ summary.assessment_id | md_inline }}
 **Conducted At:** {{ summary.conducted_at.strftime('%Y-%m-%d %H:%M UTC') }}
-**Conducted By:** {{ summary.conducted_by or 'cryptologik automated scan' }}
-**Profile:** {{ summary.assessment_profile }}
-**Generated At:** {{ generated_at }}
+**Conducted By:** {{ (summary.conducted_by or 'cryptologik automated scan') | md_inline }}
+**Profile:** {{ summary.assessment_profile | md_inline }}
+**Generated At:** {{ generated_at | md_inline }}
 
 ---
 
 ## Executive Summary
 
-This report presents the findings of a cryptographic security assessment of **{{ summary.target_description }}**.
+This report presents the findings of a cryptographic security assessment of **{{ summary.target_description | md_inline }}**.
 
 **Overall Risk Rating: {{ overall_risk }}**
 
@@ -106,7 +107,7 @@ This report presents the findings of a cryptographic security assessment of **{{
 | # | ID | Risk | Category | Title |{% if verbosity == 'verbose' %} File/Location |{% endif %}
 |---|---|---|---|---|{% if verbosity == 'verbose' %}---|{% endif %}
 {% for finding in all_findings %}
-| {{ loop.index }} | {{ finding.finding_id }} | {{ risk_badge(finding.risk_level) }} | {{ finding.category.value }} | {{ finding.title }} |{% if verbosity == 'verbose' %}{{ get_location(finding) }} |{% endif %}
+| {{ loop.index }} | {{ finding.finding_id | md_cell }} | {{ risk_badge(finding.risk_level) }} | {{ finding.category.value | md_cell }} | {{ finding.title | md_cell }} |{% if verbosity == 'verbose' %}{{ get_location(finding) }} |{% endif %}
 {% endfor %}
 {% else %}
 No findings were identified.
@@ -117,34 +118,34 @@ No findings were identified.
 ## Detailed Findings
 
 {% for finding in all_findings %}
-### {{ loop.index }}. {{ finding.title }}
+### {{ loop.index }}. {{ finding.title | md_heading }}
 
 | Field | Value |
 |---|---|
-| **Finding ID** | {{ finding.finding_id }} |
+| **Finding ID** | {{ finding.finding_id | md_inline }} |
 | **Risk Level** | {{ risk_badge(finding.risk_level) }} |
-| **Category** | {{ finding.category.value }} |
-| **Status** | {{ finding.status.value }} |
+| **Category** | {{ finding.category.value | md_inline }} |
+| **Status** | {{ finding.status.value | md_inline }} |
 {% if finding is crypto_finding %}
-| **File** | `{{ finding.file_path }}` |
+| **File** | `{{ finding.file_path | md_code }}` |
 | **Line** | {{ finding.line_number }} |
-| **Check** | {{ finding.check_name }} |
+| **Check** | {{ finding.check_name | md_inline }} |
 {% elif finding is contract_finding %}
-| **SWC** | {{ finding.swc_id }} — {{ finding.swc_title }} |
-{% if finding.contract_path %}| **Contract** | `{{ finding.contract_path }}` |{% endif %}
+| **SWC** | {{ finding.swc_id | md_inline }} — {{ finding.swc_title | md_inline }} |
+{% if finding.contract_path %}| **Contract** | `{{ finding.contract_path | md_code }}` |{% endif %}
 {% if finding.line_number %}| **Line** | {{ finding.line_number }} |{% endif %}
 {% elif finding is km_finding %}
-| **Check ID** | {{ finding.check_id }} |
-| **Key** | {{ finding.key_name }} |
+| **Check ID** | {{ finding.check_id | md_inline }} |
+| **Key** | {{ finding.key_name | md_inline }} |
 {% endif %}
 
 **Description:**
 
-{{ finding.description }}
+{{ finding.description | md_block }}
 
 **Recommendation:**
 
-{{ finding.recommendation }}
+{{ finding.recommendation | md_block }}
 
 {% if finding.false_positive_note %}
 **False Positive Note:**
@@ -159,9 +160,7 @@ _{{ finding.false_positive_note }}_
 {% if verbosity == 'verbose' and finding.evidence %}
 **Evidence (truncated):**
 
-```
-{{ finding.evidence }}
-```
+{{ finding.evidence | md_indent_code }}
 {% endif %}
 
 ---
@@ -173,7 +172,7 @@ _{{ finding.false_positive_note }}_
 ### Immediate Actions (Critical)
 
 {% for finding in all_findings if finding.risk_level.value == 'critical' %}
-- **{{ finding.title }}:** {{ finding.recommendation[:200] }}...
+- **{{ finding.title | md_inline }}:** {{ finding.recommendation[:200] | md_inline }}...
 {% endfor %}
 {% endif %}
 
@@ -181,7 +180,7 @@ _{{ finding.false_positive_note }}_
 ### Priority Remediations (High)
 
 {% for finding in all_findings if finding.risk_level.value == 'high' %}
-- **{{ finding.title }}:** {{ finding.recommendation[:200] }}...
+- **{{ finding.title | md_inline }}:** {{ finding.recommendation[:200] | md_inline }}...
 {% endfor %}
 {% endif %}
 
@@ -200,17 +199,88 @@ def _risk_badge(risk: RiskLevel) -> str:
     return RISK_BADGES.get(risk, risk.value)
 
 
+_MD_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _strip_control_chars(value: str, *, allow_newlines: bool) -> str:
+    normalized: list[str] = []
+    for ch in value:
+        codepoint = ord(ch)
+        if ch == "\n" and allow_newlines:
+            normalized.append(ch)
+            continue
+        if ch == "\n" and not allow_newlines:
+            normalized.append(" ")
+            continue
+        if ch in {"\r", "\t"}:
+            normalized.append(" ")
+            continue
+        if codepoint < 32 or codepoint == 127:
+            continue
+        normalized.append(ch)
+    return "".join(normalized)
+
+
+def _md_inline(value: Any) -> str:
+    """
+    Sanitize untrusted values for inline Markdown contexts.
+
+    - strips ASCII control characters
+    - collapses whitespace
+    """
+    if value is None:
+        return ""
+    text = _strip_control_chars(str(value), allow_newlines=False)
+    return _MD_WHITESPACE_RE.sub(" ", text).strip()
+
+
+def _md_table_cell(value: Any) -> str:
+    """Escape `|` for Markdown tables and keep cells single-line."""
+    text = _md_inline(value)
+    return text.replace("|", r"\|")
+
+
+def _md_heading(value: Any) -> str:
+    """Keep headings single-line to avoid Markdown injection via newlines."""
+    return _md_inline(value)
+
+
+def _md_code(value: Any) -> str:
+    """
+    Sanitize content for Markdown code spans.
+
+    Backticks are replaced to prevent breaking out of inline code.
+    """
+    text = _md_inline(value)
+    return text.replace("`", "'")
+
+
+def _md_block(value: Any) -> str:
+    """Sanitize untrusted values for Markdown block contexts."""
+    if value is None:
+        return ""
+    return _strip_control_chars(str(value), allow_newlines=True).rstrip()
+
+
+def _md_indent_code(value: Any) -> str:
+    """Render a Markdown indented code block to avoid fence breakouts."""
+    text = _md_block(value)
+    if not text:
+        return ""
+    return "\n".join(f"    {line}" for line in text.splitlines())
+
+
 def _get_location(finding: BaseFinding) -> str:
     """Extract a location string from a finding for the overview table."""
     if isinstance(finding, (CryptoConfigFinding,)):
-        return f"`{finding.file_path}:{finding.line_number}`"
+        return f"`{_md_code(f'{finding.file_path}:{finding.line_number}')}`"
     if isinstance(finding, SmartContractFinding):
         loc = finding.contract_path or "unknown"
         if finding.line_number:
-            return f"`{loc}:{finding.line_number}`"
-        return f"`{loc}`"
+            return f"`{_md_code(f'{loc}:{finding.line_number}')}`"
+        return f"`{_md_code(loc)}`"
     if isinstance(finding, KeyManagementFinding):
-        return f"Key: `{finding.key_name}`"
+        return f"Key: `{_md_code(finding.key_name)}`"
     return ""
 
 
@@ -242,12 +312,12 @@ def _render_markdown_fallback(
     lines = [
         "# Cryptographic Security Assessment Report",
         "",
-        f"**Target:** {summary.target_description}",
-        f"**Assessment ID:** {summary.assessment_id}",
+        f"**Target:** {_md_inline(summary.target_description)}",
+        f"**Assessment ID:** {_md_inline(summary.assessment_id)}",
         f"**Conducted At:** {summary.conducted_at.strftime('%Y-%m-%d %H:%M UTC')}",
-        f"**Conducted By:** {summary.conducted_by or 'cryptologik automated scan'}",
-        f"**Profile:** {summary.assessment_profile}",
-        f"**Generated At:** {generated_at}",
+        f"**Conducted By:** {_md_inline(summary.conducted_by or 'cryptologik automated scan')}",
+        f"**Profile:** {_md_inline(summary.assessment_profile)}",
+        f"**Generated At:** {_md_inline(generated_at)}",
         "",
         "---",
         "",
@@ -283,8 +353,8 @@ def _render_markdown_fallback(
 
     for index, finding in enumerate(all_findings, start=1):
         row = (
-            f"| {index} | {finding.finding_id} | {_risk_badge(finding.risk_level)} | "
-            f"{finding.category.value} | {finding.title} |"
+            f"| {index} | {_md_table_cell(finding.finding_id)} | {_risk_badge(finding.risk_level)} | "
+            f"{_md_table_cell(finding.category.value)} | {_md_table_cell(finding.title)} |"
         )
         if verbosity == "verbose":
             row = row[:-1] + f" {_get_location(finding)} |"
@@ -292,37 +362,40 @@ def _render_markdown_fallback(
 
     lines.extend(["", "---", "", "## Detailed Findings", ""])
     for index, finding in enumerate(all_findings, start=1):
+        finding_title = _md_heading(finding.title)
         lines.extend(
             [
-                f"### {index}. {finding.title}",
+                f"### {index}. {finding_title}",
                 "",
                 "| Field | Value |",
                 "|---|---|",
-                f"| **Finding ID** | {finding.finding_id} |",
+                f"| **Finding ID** | {_md_inline(finding.finding_id)} |",
                 f"| **Risk Level** | {_risk_badge(finding.risk_level)} |",
-                f"| **Category** | {finding.category.value} |",
-                f"| **Status** | {finding.status.value} |",
+                f"| **Category** | {_md_inline(finding.category.value)} |",
+                f"| **Status** | {_md_inline(finding.status.value)} |",
             ]
         )
         if isinstance(finding, CryptoConfigFinding):
             lines.extend(
                 [
-                    f"| **File** | `{finding.file_path}` |",
+                    f"| **File** | `{_md_code(finding.file_path)}` |",
                     f"| **Line** | {finding.line_number} |",
-                    f"| **Check** | {finding.check_name} |",
+                    f"| **Check** | {_md_inline(finding.check_name)} |",
                 ]
             )
         elif isinstance(finding, SmartContractFinding):
-            lines.append(f"| **SWC** | {finding.swc_id} — {finding.swc_title} |")
+            lines.append(
+                f"| **SWC** | {_md_inline(finding.swc_id)} — {_md_inline(finding.swc_title)} |"
+            )
             if finding.contract_path:
-                lines.append(f"| **Contract** | `{finding.contract_path}` |")
+                lines.append(f"| **Contract** | `{_md_code(finding.contract_path)}` |")
             if finding.line_number:
                 lines.append(f"| **Line** | {finding.line_number} |")
         elif isinstance(finding, KeyManagementFinding):
             lines.extend(
                 [
-                    f"| **Check ID** | {finding.check_id} |",
-                    f"| **Key** | {finding.key_name} |",
+                    f"| **Check ID** | {_md_inline(finding.check_id)} |",
+                    f"| **Key** | {_md_inline(finding.key_name)} |",
                 ]
             )
 
@@ -331,23 +404,25 @@ def _render_markdown_fallback(
                 "",
                 "**Description:**",
                 "",
-                finding.description,
+                _md_block(finding.description),
                 "",
                 "**Recommendation:**",
                 "",
-                finding.recommendation,
+                _md_block(finding.recommendation),
                 "",
             ]
         )
         if finding.false_positive_note:
-            lines.extend(["**False Positive Note:**", "", f"_{finding.false_positive_note}_", ""])
+            lines.extend(
+                ["**False Positive Note:**", "", f"_{_md_block(finding.false_positive_note)}_", ""]
+            )
         if finding.requires_manual_review:
             lines.append(
                 "> **Manual Review Required:** This finding was produced by automated static analysis. Confirm whether it represents a real vulnerability before remediation."
             )
             lines.append("")
         if verbosity == "verbose" and finding.evidence:
-            lines.extend(["**Evidence (truncated):**", "", "```", finding.evidence, "```", ""])
+            lines.extend(["**Evidence (truncated):**", "", _md_indent_code(finding.evidence), ""])
         lines.extend(["---", ""])
 
     return "\n".join(lines).rstrip() + "\n"
@@ -522,6 +597,12 @@ def generate_markdown_report(
         env.tests["crypto_finding"] = lambda f: isinstance(f, CryptoConfigFinding)
         env.tests["contract_finding"] = lambda f: isinstance(f, SmartContractFinding)
         env.tests["km_finding"] = lambda f: isinstance(f, KeyManagementFinding)
+        env.filters["md_inline"] = _md_inline
+        env.filters["md_cell"] = _md_table_cell
+        env.filters["md_heading"] = _md_heading
+        env.filters["md_code"] = _md_code
+        env.filters["md_block"] = _md_block
+        env.filters["md_indent_code"] = _md_indent_code
 
         template = env.from_string(_REPORT_TEMPLATE)
         report = template.render(

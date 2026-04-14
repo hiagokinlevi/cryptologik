@@ -78,3 +78,14 @@ def test_generate_sarif_report_emits_rules_results_and_locations():
     )
     assert "locations" not in results["KM-001"]
     assert "Recommendation:" in results["KM-001"]["help"]["markdown"]
+
+
+def test_generate_markdown_report_escapes_table_injection_from_titles():
+    summary = _sample_summary()
+    mutated = summary.model_copy(deep=True)
+    mutated.smart_contract_findings[0].title = "Pipe | Injection\nNewline"
+
+    report = generate_markdown_report(mutated, verbosity="standard")
+    table_row = next(line for line in report.splitlines() if line.startswith("| 1 |"))
+
+    assert "Pipe \\| Injection Newline" in table_row
