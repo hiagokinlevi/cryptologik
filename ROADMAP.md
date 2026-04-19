@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Implement unsafe Solidity pattern check (cycle 17)
+- [x] Add TLS hostname parsing utility (cycle 18)
