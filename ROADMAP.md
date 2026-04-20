@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add TLS hostname parsing utility (cycle 18)
+- [x] Create minimal README with usage examples (cycle 19)
