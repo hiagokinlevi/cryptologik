@@ -1,0 +1,4 @@
+# Runtime dependencies for cryptologik
+#
+# This project currently relies on the Python standard library at runtime.
+# Add pinned or bounded packages here as runtime dependencies are introduced.
