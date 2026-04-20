@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Create minimal README with usage examples (cycle 19)
+- [x] Add requirements.txt for runtime dependencies (cycle 20)
