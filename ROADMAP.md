@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add requirements.txt for runtime dependencies (cycle 20)
+- [x] Implement JSON output mode for CLI (cycle 21)
