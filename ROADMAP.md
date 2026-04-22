@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Implement PEM certificate expiry-threshold warning (cycle 26)
+- [x] Add detection for hardcoded cryptographic keys in source patterns (cycle 27)
