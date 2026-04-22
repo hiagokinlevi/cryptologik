@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Solidity pragma version extractor and legacy version warning (cycle 24)
+- [x] Add TLS minimum-version policy check to config scanner (cycle 25)
