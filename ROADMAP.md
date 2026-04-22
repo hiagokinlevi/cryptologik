@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add TLS minimum-version policy check to config scanner (cycle 25)
+- [x] Implement PEM certificate expiry-threshold warning (cycle 26)
