@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add CLI exit code mapping based on finding severity (cycle 29)
+- [x] Add TLS cipher allowlist policy check in config scanner (cycle 30)
