@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add detection for hardcoded cryptographic keys in source patterns (cycle 27)
+- [x] Ship a default crypto baseline policy file for CI usage (cycle 28)
