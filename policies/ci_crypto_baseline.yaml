@@ -1,0 +1,42 @@
+version: 1
+profile:
+  id: ci_crypto_baseline
+  name: CI Crypto Baseline
+  description: >-
+    Default production-oriented cryptographic baseline policy for CI scans.
+    Enforces minimum asymmetric key strengths and blocks weak hashes and
+    insecure cipher modes.
+  severity: high
+
+asymmetric:
+  rsa:
+    min_key_size: 2048
+  ecc:
+    min_key_size: 256
+
+hashes:
+  banned:
+    - md5
+    - sha1
+
+cipher_modes:
+  banned:
+    - ecb
+
+metadata:
+  owner: security
+  intended_use:
+    - ci
+    - pull_request
+    - release_gate
+  compatibility:
+    validator_capabilities:
+      - min_rsa_key_size
+      - min_ecc_key_size
+      - banned_hash_detection
+      - banned_cipher_mode_detection
+
+# Quick usage (CI/local):
+# cryptologik tls-check --input <path-to-config> --policy policies/ci_crypto_baseline.yaml
+# cryptologik cert-expiry --cert <path-to-cert> --policy policies/ci_crypto_baseline.yaml
+# cryptologik contract-scan --path <path-to-contract> --policy policies/ci_crypto_baseline.yaml
