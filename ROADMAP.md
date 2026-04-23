@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Ship a default crypto baseline policy file for CI usage (cycle 28)
+- [x] Add CLI exit code mapping based on finding severity (cycle 29)
