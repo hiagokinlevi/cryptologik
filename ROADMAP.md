@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add TLS cipher allowlist policy check in config scanner (cycle 30)
+- [x] Add key-rotation max-age policy check with severity-tagged finding (cycle 31)
