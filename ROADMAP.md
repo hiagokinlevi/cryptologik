@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add machine-readable findings schema validator for JSON reports (cycle 32)
+- [x] Add `--fail-on` severity threshold flag to CLI (cycle 33)
