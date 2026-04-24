@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add key-rotation max-age policy check with severity-tagged finding (cycle 31)
+- [x] Add machine-readable findings schema validator for JSON reports (cycle 32)
