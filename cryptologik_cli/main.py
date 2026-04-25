@@ -1,75 +1,56 @@
 from __future__ import annotations
 
-import argparse
 import json
-import sys
-from typing import Any, Iterable
+from pathlib import Path
+from typing import List
+
+import typer
+
+from cryptologik.certificates.expiry import check_certificate_expiry
+
+app = typer.Typer(help="cryptologik CLI")
 
 
-SEVERITY_ORDER = {
-    "low": 1,
-    "medium": 2,
-    "high": 3,
-    "critical": 4,
-}
+@app.command("cert-expiry")
+def cert_expiry(
+    cert: str = typer.Option(..., "--cert", help="Path to certificate file or directory"),
+    warn_days: int = typer.Option(30, "--warn-days", help="Warn threshold in days"),
+    report_format: str = typer.Option("json", "--format", help="Output format"),
+):
+    path = Path(cert)
 
+    if not path.exists():
+        typer.echo(json.dumps({"error": f"Path not found: {cert}"}))
+        raise typer.Exit(code=2)
 
-def _normalize_severity(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip().lower()
-    return text if text in SEVERITY_ORDER else None
+    cert_files: List[Path] = []
+    if path.is_file():
+        cert_files = [path]
+    else:
+        cert_files = sorted(
+            [p for p in path.rglob("*") if p.is_file() and p.suffix.lower() in {".pem", ".crt"}]
+        )
 
+    findings = []
+    should_fail = False
 
-def finding_meets_threshold(finding_severity: Any, threshold: str | None) -> bool:
-    normalized_threshold = _normalize_severity(threshold)
-    if normalized_threshold is None:
-        return False
-    normalized_finding = _normalize_severity(finding_severity)
-    if normalized_finding is None:
-        return False
-    return SEVERITY_ORDER[normalized_finding] >= SEVERITY_ORDER[normalized_threshold]
+    for cert_file in cert_files:
+        result = check_certificate_expiry(str(cert_file), warn_days=warn_days)
 
+        # Keep existing JSON/report-compatible shape; only enrich with source path when scanning dirs.
+        if isinstance(result, dict):
+            if path.is_dir():
+                result = {**result, "cert": str(cert_file)}
+            findings.append(result)
+            if bool(result.get("breach") or result.get("expired") or result.get("within_warn_threshold")):
+                should_fail = True
 
-def any_finding_meets_threshold(findings: Iterable[dict[str, Any]], threshold: str | None) -> bool:
-    return any(finding_meets_threshold(f.get("severity"), threshold) for f in findings)
+    payload = findings[0] if path.is_file() and len(findings) == 1 else {"findings": findings}
 
+    if report_format.lower() == "json":
+        typer.echo(json.dumps(payload))
+    else:
+        typer.echo(json.dumps(payload))
 
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="cryptologik")
-    parser.add_argument("--input", help="Path to findings JSON")
-    parser.add_argument(
-        "--fail-on",
-        choices=("low", "medium", "high", "critical"),
-        help="Exit with non-zero status if any finding meets or exceeds this severity",
-    )
-    return parser
-
-
-def _load_findings(path: str) -> list[dict[str, Any]]:
-    with open(path, "r", encoding="utf-8") as fh:
-        data = json.load(fh)
-    if isinstance(data, dict) and isinstance(data.get("findings"), list):
-        return [f for f in data["findings"] if isinstance(f, dict)]
-    if isinstance(data, list):
-        return [f for f in data if isinstance(f, dict)]
-    return []
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = _build_parser()
-    args = parser.parse_args(argv)
-
-    findings: list[dict[str, Any]] = []
-    if args.input:
-        findings = _load_findings(args.input)
-
-    # Existing behavior is preserved unless --fail-on is supplied.
-    if args.fail_on and any_finding_meets_threshold(findings, args.fail_on):
-        return 1
-
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    if should_fail:
+        raise typer.Exit(code=1)
