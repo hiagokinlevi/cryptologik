@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Implement `--json` output mode for `cert-expiry` command (cycle 35)
+- [x] Add `contract-scan --json` output mode for structured findings (cycle 36)
