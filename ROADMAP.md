@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `--fail-on` severity threshold flag to CLI (cycle 33)
+- [x] Add `cert-expiry` support for scanning all PEM certs in a directory (cycle 34)
