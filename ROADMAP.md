@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `cert-expiry` support for scanning all PEM certs in a directory (cycle 34)
+- [x] Implement `--json` output mode for `cert-expiry` command (cycle 35)
