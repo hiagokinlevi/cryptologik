@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `contract-scan --json` output mode for structured findings (cycle 36)
+- [x] Add cert-expiry support for encrypted PEM keys with explicit skip finding (cycle 37)
