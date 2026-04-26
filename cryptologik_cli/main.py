@@ -1,62 +1,66 @@
+from __future__ import annotations
+
 import json
-from collections import Counter
 from pathlib import Path
+from typing import Any
 
 import click
 
-from blockchain.contract_scanner import scan_contract
+from cryptologik.contract_scan import scan_contract
+
+
+SEVERITY_ORDER = {
+    "none": -1,
+    "low": 0,
+    "medium": 1,
+    "high": 2,
+    "critical": 3,
+}
+
+
+def _max_finding_severity(findings: list[dict[str, Any]]) -> str:
+    max_sev = "none"
+    max_rank = SEVERITY_ORDER[max_sev]
+    for finding in findings:
+        sev = str(finding.get("severity", "")).lower()
+        rank = SEVERITY_ORDER.get(sev, -1)
+        if rank > max_rank:
+            max_rank = rank
+            max_sev = sev
+    return max_sev
 
 
 @click.group()
-def cli():
-    pass
+def cli() -> None:
+    """cryptologik command line interface."""
 
 
 @cli.command("contract-scan")
-@click.option("--path", "contract_path", required=True, type=click.Path(exists=True, dir_okay=False))
-@click.option("--json", "as_json", is_flag=True, default=False, help="Emit machine-readable JSON output")
-def contract_scan(contract_path: str, as_json: bool):
-    findings = scan_contract(contract_path)
+@click.option("--path", "path_", required=True, type=click.Path(exists=True, path_type=Path), help="Path to smart contract source file")
+@click.option("--json-output", is_flag=True, default=False, help="Emit scan output as JSON")
+@click.option(
+    "--fail-on",
+    type=click.Choice(["none", "low", "medium", "high", "critical"], case_sensitive=False),
+    default=None,
+    help="Fail with non-zero exit code when highest finding severity meets/exceeds threshold",
+)
+def contract_scan_cmd(path_: Path, json_output: bool, fail_on: str | None) -> None:
+    """Scan a smart contract for security findings."""
+    result = scan_contract(str(path_))
+    findings = result.get("findings", []) if isinstance(result, dict) else []
 
-    if as_json:
-        normalized = []
+    if json_output:
+        click.echo(json.dumps(result, indent=2))
+    else:
+        click.echo(f"Scanned: {path_}")
         for f in findings:
-            normalized.append(
-                {
-                    "rule_id": f.get("rule_id"),
-                    "severity": f.get("severity"),
-                    "file": f.get("file", str(Path(contract_path))),
-                    "line": f.get("line"),
-                    "message": f.get("message"),
-                    "recommendation": f.get("recommendation"),
-                }
-            )
+            click.echo(f"- [{f.get('severity', 'unknown')}] {f.get('title', 'finding')}")
 
-        severity_counts = Counter((item.get("severity") or "unknown").lower() for item in normalized)
-        payload = {
-            "findings": normalized,
-            "summary": {
-                "total": len(normalized),
-                "by_severity": dict(severity_counts),
-            },
-        }
-        click.echo(json.dumps(payload, indent=2))
+    # Default behavior unchanged when --fail-on is omitted
+    if fail_on is None:
         return
 
-    if not findings:
-        click.echo("No findings.")
-        return
-
-    click.echo(f"Found {len(findings)} finding(s):")
-    for f in findings:
-        click.echo(
-            f"- [{f.get('severity', 'UNKNOWN')}] {f.get('rule_id', 'N/A')} "
-            f"{f.get('file', contract_path)}:{f.get('line', '?')} - {f.get('message', '')}"
-        )
-        rec = f.get("recommendation")
-        if rec:
-            click.echo(f"  Recommendation: {rec}")
-
-
-if __name__ == "__main__":
-    cli()
+    threshold = fail_on.lower()
+    highest = _max_finding_severity(findings)
+    if SEVERITY_ORDER.get(highest, -1) >= SEVERITY_ORDER[threshold] and threshold != "none":
+        raise SystemExit(1)
