@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add cert-expiry support for encrypted PEM keys with explicit skip finding (cycle 37)
+- [x] Implement `--format sarif` output for `contract-scan` command (cycle 38)
