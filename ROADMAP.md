@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Implement `--format sarif` output for `contract-scan` command (cycle 38)
+- [x] Add `contract-scan --fail-on` severity threshold enforcement (cycle 39)
