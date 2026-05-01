@@ -1,66 +1,71 @@
-from __future__ import annotations
-
+import argparse
 import json
-from pathlib import Path
-from typing import Any
+import sys
+from typing import Any, Dict, List
 
-import click
-
-from cryptologik.contract_scan import scan_contract
+from analyzers.tls import scan_tls_config
 
 
-SEVERITY_ORDER = {
-    "none": -1,
-    "low": 0,
-    "medium": 1,
-    "high": 2,
-    "critical": 3,
-}
+def _normalize_tls_finding(finding: Dict[str, Any], target: str) -> Dict[str, Any]:
+    return {
+        "rule_id": finding.get("rule_id") or finding.get("id") or "TLS_UNKNOWN",
+        "title": finding.get("title") or finding.get("message") or "TLS finding",
+        "severity": str(finding.get("severity") or "info").lower(),
+        "target": finding.get("target") or target,
+        "evidence": finding.get("evidence") or finding.get("details") or finding.get("message") or "",
+    }
 
 
-def _max_finding_severity(findings: list[dict[str, Any]]) -> str:
-    max_sev = "none"
-    max_rank = SEVERITY_ORDER[max_sev]
-    for finding in findings:
-        sev = str(finding.get("severity", "")).lower()
-        rank = SEVERITY_ORDER.get(sev, -1)
-        if rank > max_rank:
-            max_rank = rank
-            max_sev = sev
-    return max_sev
+def _build_tls_json_output(target: str, findings: List[Dict[str, Any]]) -> Dict[str, Any]:
+    normalized = [_normalize_tls_finding(f, target) for f in findings]
+    sev_counts: Dict[str, int] = {}
+    for f in normalized:
+        sev = f["severity"]
+        sev_counts[sev] = sev_counts.get(sev, 0) + 1
+
+    return {
+        "summary": {
+            "target": target,
+            "total_findings": len(normalized),
+            "severity_counts": sev_counts,
+        },
+        "findings": normalized,
+    }
 
 
-@click.group()
-def cli() -> None:
-    """cryptologik command line interface."""
+def main(argv: List[str] = None) -> int:
+    parser = argparse.ArgumentParser(prog="cryptologik")
+    subparsers = parser.add_subparsers(dest="command")
 
+    tls_parser = subparsers.add_parser("tls-check", help="Run TLS configuration posture checks")
+    tls_parser.add_argument("--input", required=True, help="Path to TLS config input file")
+    tls_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable JSON findings with summary",
+    )
 
-@cli.command("contract-scan")
-@click.option("--path", "path_", required=True, type=click.Path(exists=True, path_type=Path), help="Path to smart contract source file")
-@click.option("--json-output", is_flag=True, default=False, help="Emit scan output as JSON")
-@click.option(
-    "--fail-on",
-    type=click.Choice(["none", "low", "medium", "high", "critical"], case_sensitive=False),
-    default=None,
-    help="Fail with non-zero exit code when highest finding severity meets/exceeds threshold",
-)
-def contract_scan_cmd(path_: Path, json_output: bool, fail_on: str | None) -> None:
-    """Scan a smart contract for security findings."""
-    result = scan_contract(str(path_))
-    findings = result.get("findings", []) if isinstance(result, dict) else []
+    args = parser.parse_args(argv)
 
-    if json_output:
-        click.echo(json.dumps(result, indent=2))
-    else:
-        click.echo(f"Scanned: {path_}")
+    if args.command == "tls-check":
+        results = scan_tls_config(args.input)
+        findings = results.get("findings", []) if isinstance(results, dict) else []
+
+        if args.json:
+            payload = _build_tls_json_output(args.input, findings)
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 1 if payload["summary"]["total_findings"] > 0 else 0
+
+        # existing human-readable output behavior
         for f in findings:
-            click.echo(f"- [{f.get('severity', 'unknown')}] {f.get('title', 'finding')}")
+            sev = f.get("severity", "info").upper()
+            title = f.get("title") or f.get("message") or "TLS finding"
+            print(f"[{sev}] {title}")
+        return 1 if len(findings) > 0 else 0
 
-    # Default behavior unchanged when --fail-on is omitted
-    if fail_on is None:
-        return
+    parser.print_help()
+    return 2
 
-    threshold = fail_on.lower()
-    highest = _max_finding_severity(findings)
-    if SEVERITY_ORDER.get(highest, -1) >= SEVERITY_ORDER[threshold] and threshold != "none":
-        raise SystemExit(1)
+
+if __name__ == "__main__":
+    sys.exit(main())
