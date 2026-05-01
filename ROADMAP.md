@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `cert-expiry --fail-on` severity threshold enforcement (cycle 40)
+- [x] Add `tls-check --json` output mode for structured posture findings (cycle 41)
