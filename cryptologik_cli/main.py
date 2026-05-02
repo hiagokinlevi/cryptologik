@@ -1,106 +1,88 @@
 from __future__ import annotations
 
+import argparse
 import json
-from pathlib import Path
-from typing import Any
+from collections import Counter
+from datetime import datetime, timezone
+from typing import Any, Dict, Iterable, List
 
-import click
-
-from analyzers.cert_expiry import analyze_certificate_expiry
-from analyzers.contract_scan import analyze_contract
-from analyzers.tls_check import analyze_tls_config
-
-SEVERITY_ORDER = {
-    "low": 1,
-    "medium": 2,
-    "high": 3,
-    "critical": 4,
-}
+try:
+    from importlib.metadata import version as _pkg_version
+except Exception:  # pragma: no cover
+    _pkg_version = None
 
 
-@click.group()
-def cli() -> None:
-    """cryptologik CLI."""
-
-
-def _load_yaml_or_json(path: Path) -> dict[str, Any]:
-    text = path.read_text(encoding="utf-8")
-    if path.suffix.lower() in {".json"}:
-        return json.loads(text)
+def _get_version() -> str:
+    if _pkg_version is None:
+        return "unknown"
     try:
-        import yaml  # type: ignore
-    except Exception as exc:  # pragma: no cover
-        raise click.ClickException("PyYAML is required for YAML inputs") from exc
-    data = yaml.safe_load(text)
-    return data or {}
+        return _pkg_version("cryptologik")
+    except Exception:
+        return "unknown"
 
 
-def _max_finding_severity(findings: list[dict[str, Any]]) -> str | None:
-    max_level = 0
-    max_name: str | None = None
-    for finding in findings:
-        sev = str(finding.get("severity", "")).lower()
-        level = SEVERITY_ORDER.get(sev, 0)
-        if level > max_level:
-            max_level = level
-            max_name = sev
-    return max_name
+def _overall_status(severity_counts: Dict[str, int]) -> str:
+    if severity_counts.get("critical", 0) > 0:
+        return "fail"
+    if severity_counts.get("high", 0) > 0:
+        return "warn"
+    return "pass"
 
 
-def _should_fail(findings: list[dict[str, Any]], fail_on: str | None) -> bool:
-    if not fail_on:
-        return False
-    threshold = SEVERITY_ORDER[fail_on]
-    for finding in findings:
-        sev = str(finding.get("severity", "")).lower()
-        if SEVERITY_ORDER.get(sev, 0) >= threshold:
-            return True
-    return False
+def _normalize_findings(findings: Iterable[Dict[str, Any]]) -> Dict[str, int]:
+    c = Counter()
+    for finding in findings or []:
+        sev = str(finding.get("severity", "unknown")).lower()
+        c[sev] += 1
+    return {
+        "critical": c.get("critical", 0),
+        "high": c.get("high", 0),
+        "medium": c.get("medium", 0),
+        "low": c.get("low", 0),
+        "info": c.get("info", 0),
+        "unknown": c.get("unknown", 0),
+    }
 
 
-@cli.command("tls-check")
-@click.option("--input", "input_path", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path))
-@click.option("--format", "output_format", type=click.Choice(["text", "json"], case_sensitive=False), default="text")
-@click.option("--fail-on", type=click.Choice(["low", "medium", "high", "critical"], case_sensitive=False), default=None)
-def tls_check(input_path: Path, output_format: str, fail_on: str | None) -> None:
-    data = _load_yaml_or_json(input_path)
-    result = analyze_tls_config(data)
-    findings = result.get("findings", [])
+def _build_summary_payload(executed_checks: List[str], findings: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
+    sev = _normalize_findings(findings)
+    return {
+        "tool_version": _get_version(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "executed_checks": executed_checks,
+        "finding_counts": {
+            "by_severity": sev,
+            "total": sum(sev.values()),
+        },
+        "overall_status": _overall_status(sev),
+    }
 
-    if output_format.lower() == "json":
-        click.echo(json.dumps(result, indent=2))
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="cryptologik", description="cryptologik security toolkit")
+    parser.add_argument("--json", action="store_true", help="Emit top-level summary as JSON")
+    return parser
+
+
+def main(argv: List[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    # Top-level inventory/summary path.
+    executed_checks: List[str] = []
+    findings: List[Dict[str, Any]] = []
+    payload = _build_summary_payload(executed_checks=executed_checks, findings=findings)
+
+    if args.json:
+        print(json.dumps(payload, sort_keys=True))
     else:
-        click.echo(f"TLS findings: {len(findings)}")
-        for f in findings:
-            click.echo(f"- [{f.get('severity', 'unknown')}] {f.get('id', 'TLS-ISSUE')}: {f.get('message', '')}")
+        print("cryptologik summary")
+        print(f"version: {payload['tool_version']}")
+        print(f"status: {payload['overall_status']}")
+        print(f"findings: {payload['finding_counts']['total']}")
 
-    if _should_fail(findings, fail_on.lower() if fail_on else None):
-        raise SystemExit(1)
-
-
-@cli.command("cert-expiry")
-@click.option("--cert", "cert_path", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path))
-@click.option("--warn-days", default=30, type=int)
-@click.option("--format", "output_format", type=click.Choice(["text", "json"], case_sensitive=False), default="text")
-def cert_expiry(cert_path: Path, warn_days: int, output_format: str) -> None:
-    result = analyze_certificate_expiry(cert_path, warn_days=warn_days)
-    if output_format.lower() == "json":
-        click.echo(json.dumps(result, indent=2))
-    else:
-        click.echo(result.get("summary", "Certificate expiry analysis complete"))
+    return 0
 
 
-@cli.command("contract-scan")
-@click.option("--path", "source_path", required=True, type=click.Path(exists=True, path_type=Path))
-@click.option("--format", "output_format", type=click.Choice(["text", "json"], case_sensitive=False), default="text")
-def contract_scan(source_path: Path, output_format: str) -> None:
-    result = analyze_contract(source_path)
-    if output_format.lower() == "json":
-        click.echo(json.dumps(result, indent=2))
-    else:
-        findings = result.get("findings", [])
-        click.echo(f"Contract findings: {len(findings)}")
-
-
-if __name__ == "__main__":
-    cli()
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())
