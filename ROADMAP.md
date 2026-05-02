@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `--json` output mode for top-level `cryptologik` inventory/summary command (cycle 44)
+- [x] Add `--output` file path option to `contract-scan` JSON/SARIF reporting (cycle 45)
