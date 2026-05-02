@@ -2,87 +2,80 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections import Counter
-from datetime import datetime, timezone
-from typing import Any, Dict, Iterable, List
+import os
+import sys
+from pathlib import Path
+from typing import Any
 
-try:
-    from importlib.metadata import version as _pkg_version
-except Exception:  # pragma: no cover
-    _pkg_version = None
-
-
-def _get_version() -> str:
-    if _pkg_version is None:
-        return "unknown"
-    try:
-        return _pkg_version("cryptologik")
-    except Exception:
-        return "unknown"
+from cryptologik.contract_scan import run_contract_scan
+from cryptologik.reports.sarif import contract_scan_to_sarif
 
 
-def _overall_status(severity_counts: Dict[str, int]) -> str:
-    if severity_counts.get("critical", 0) > 0:
-        return "fail"
-    if severity_counts.get("high", 0) > 0:
-        return "warn"
-    return "pass"
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="cryptologik")
+    subparsers = parser.add_subparsers(dest="command")
 
+    contract = subparsers.add_parser("contract-scan", help="Scan smart contracts for common issues")
+    contract.add_argument("--path", required=True, help="Path to contract file or directory")
+    contract.add_argument("--json", action="store_true", help="Emit JSON output")
+    contract.add_argument(
+        "--format",
+        choices=["text", "sarif"],
+        default="text",
+        help="Output format (default: text)",
+    )
+    contract.add_argument(
+        "--output",
+        help="Write structured output to a file (supported with --json or --format sarif)",
+    )
 
-def _normalize_findings(findings: Iterable[Dict[str, Any]]) -> Dict[str, int]:
-    c = Counter()
-    for finding in findings or []:
-        sev = str(finding.get("severity", "unknown")).lower()
-        c[sev] += 1
-    return {
-        "critical": c.get("critical", 0),
-        "high": c.get("high", 0),
-        "medium": c.get("medium", 0),
-        "low": c.get("low", 0),
-        "info": c.get("info", 0),
-        "unknown": c.get("unknown", 0),
-    }
-
-
-def _build_summary_payload(executed_checks: List[str], findings: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
-    sev = _normalize_findings(findings)
-    return {
-        "tool_version": _get_version(),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "executed_checks": executed_checks,
-        "finding_counts": {
-            "by_severity": sev,
-            "total": sum(sev.values()),
-        },
-        "overall_status": _overall_status(sev),
-    }
-
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="cryptologik", description="cryptologik security toolkit")
-    parser.add_argument("--json", action="store_true", help="Emit top-level summary as JSON")
     return parser
 
 
-def main(argv: List[str] | None = None) -> int:
-    parser = build_parser()
+def _write_output_file(path: str, payload: str) -> None:
+    out_path = Path(path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(payload, encoding="utf-8")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_parser()
     args = parser.parse_args(argv)
 
-    # Top-level inventory/summary path.
-    executed_checks: List[str] = []
-    findings: List[Dict[str, Any]] = []
-    payload = _build_summary_payload(executed_checks=executed_checks, findings=findings)
+    if args.command == "contract-scan":
+        result: dict[str, Any] = run_contract_scan(args.path)
 
-    if args.json:
-        print(json.dumps(payload, sort_keys=True))
-    else:
-        print("cryptologik summary")
-        print(f"version: {payload['tool_version']}")
-        print(f"status: {payload['overall_status']}")
-        print(f"findings: {payload['finding_counts']['total']}")
+        if args.format == "sarif":
+            rendered = json.dumps(contract_scan_to_sarif(result), indent=2)
+            if args.output:
+                try:
+                    _write_output_file(args.output, rendered + "\n")
+                except OSError as exc:
+                    print(f"error: failed to write SARIF report to '{args.output}': {exc}", file=sys.stderr)
+                    return 2
+            else:
+                print(rendered)
+            return 0
 
-    return 0
+        if args.json:
+            rendered = json.dumps(result, indent=2)
+            if args.output:
+                try:
+                    _write_output_file(args.output, rendered + "\n")
+                except OSError as exc:
+                    print(f"error: failed to write JSON report to '{args.output}': {exc}", file=sys.stderr)
+                    return 2
+            else:
+                print(rendered)
+            return 0
+
+        # text mode remains stdout only; --output intentionally ignored unless structured format selected
+        print(result.get("summary", "contract scan complete"))
+        return 0
+
+    parser.print_help()
+    return 1
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     raise SystemExit(main())
