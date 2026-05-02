@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `tls-check --fail-on` severity threshold enforcement (cycle 42)
+- [x] Add `cert-expiry --input` support for newline-delimited cert path lists (cycle 43)
