@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `cert-expiry --input` support for newline-delimited cert path lists (cycle 43)
+- [x] Add `--json` output mode for top-level `cryptologik` inventory/summary command (cycle 44)
