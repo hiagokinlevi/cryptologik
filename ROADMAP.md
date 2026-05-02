@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `--output` file path option to `contract-scan` JSON/SARIF reporting (cycle 45)
+- [x] Add `--output` file option to `tls-check` JSON output (cycle 46)
