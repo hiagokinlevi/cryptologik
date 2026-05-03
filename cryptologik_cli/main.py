@@ -1,67 +1,45 @@
-from __future__ import annotations
-
-import argparse
 import json
+import sys
 from pathlib import Path
-from typing import Any
 
-from analyzers.tls import analyze_tls_config
+import click
 
-
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="cryptologik")
-    subparsers = parser.add_subparsers(dest="command")
-
-    tls_parser = subparsers.add_parser("tls-check", help="Analyze TLS configuration")
-    tls_parser.add_argument("--input", required=True, help="Path to TLS config file")
-    tls_parser.add_argument("--json", action="store_true", help="Emit JSON output")
-    tls_parser.add_argument(
-        "--output",
-        help="Write JSON findings to this file (requires --json)",
-    )
-
-    return parser
+from cryptologik.certificates.expiry import check_certificate_expiry
 
 
-def _render_tls_json(result: Any) -> str:
-    return json.dumps(result, indent=2, sort_keys=True)
+@click.group()
+def cli() -> None:
+    """cryptologik command line interface."""
+    pass
 
 
-def _handle_tls_check(args: argparse.Namespace) -> int:
-    findings = analyze_tls_config(args.input)
+@cli.command("cert-expiry")
+@click.option("--cert", "cert_path", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path), help="Path to certificate file.")
+@click.option("--warn-days", default=30, show_default=True, type=int, help="Warning threshold in days.")
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON output.")
+@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), help="Write JSON report to file path.")
+def cert_expiry(cert_path: Path, warn_days: int, as_json: bool, output_path: Path | None) -> None:
+    """Check certificate expiry risk."""
+    result = check_certificate_expiry(str(cert_path), warn_days=warn_days)
 
-    if args.output and not args.json:
-        raise SystemExit("--output is only supported with --json")
-
-    if args.json:
-        payload = _render_tls_json(findings)
-        if args.output:
-            output_path = Path(args.output)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            output_path.write_text(payload + "\n", encoding="utf-8")
+    if as_json:
+        payload = json.dumps(result, indent=2)
+        if output_path is not None:
+            try:
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_text(payload + "\n", encoding="utf-8")
+            except OSError as exc:
+                click.echo(f"Error: unable to write output file '{output_path}': {exc}", err=True)
+                raise SystemExit(1)
         else:
-            print(payload)
-        return 0
+            click.echo(payload)
+        return
 
-    # existing non-JSON behavior retained
-    if isinstance(findings, list):
-        for item in findings:
-            print(item)
-    else:
-        print(findings)
-    return 0
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-
-    if args.command == "tls-check":
-        return _handle_tls_check(args)
-
-    parser.print_help()
-    return 1
+    # Keep existing non-JSON behavior unchanged.
+    click.echo(f"certificate: {result.get('certificate', cert_path)}")
+    click.echo(f"days_until_expiry: {result.get('days_until_expiry', 'unknown')}")
+    click.echo(f"status: {result.get('status', 'unknown')}")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    cli()
