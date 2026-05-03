@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `--output` file option to `tls-check` JSON output (cycle 46)
+- [x] Add `cert-expiry --output` file support for JSON reports (cycle 47)
