@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `cert-expiry --json` output mode for structured findings (cycle 48)
+- [x] Add `contract-scan --input` support for newline-delimited Solidity file lists (cycle 49)
