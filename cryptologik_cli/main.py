@@ -2,87 +2,89 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import asdict, is_dataclass
-from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
-from cryptologik.analyzers.cert_expiry import analyze_certificate_expiry
+from cryptologik.contracts.scan import scan_contract
 
 
-def _serialize_value(value: Any) -> Any:
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            value = value.replace(tzinfo=timezone.utc)
-        return value.isoformat()
-    if is_dataclass(value):
-        return {k: _serialize_value(v) for k, v in asdict(value).items()}
-    if isinstance(value, dict):
-        return {k: _serialize_value(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_serialize_value(v) for v in value]
-    return value
+def _emit(payload: dict[str, Any]) -> None:
+    print(json.dumps(payload, indent=2))
 
 
-def _finding_to_json(finding: Any, cert_path: str) -> dict[str, Any]:
-    # Reuse existing finding model and gracefully map common fields.
-    data = _serialize_value(finding)
-    if not isinstance(data, dict):
-        data = {}
+def _scan_single(path: str) -> dict[str, Any]:
+    return scan_contract(path)
+
+
+def _scan_from_input_list(input_file: str) -> dict[str, Any]:
+    findings: list[dict[str, Any]] = []
+    scanned_paths: list[str] = []
+
+    for raw in Path(input_file).read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        scanned_paths.append(line)
+        try:
+            result = _scan_single(line)
+            if isinstance(result, dict) and isinstance(result.get("findings"), list):
+                findings.extend(result["findings"])
+            else:
+                findings.append(
+                    {
+                        "rule_id": "CONTRACT_SCAN_INVALID_PAYLOAD",
+                        "severity": "medium",
+                        "message": "Scan result did not include a findings list.",
+                        "path": line,
+                    }
+                )
+        except Exception as exc:  # pragma: no cover - defensive normalization
+            findings.append(
+                {
+                    "rule_id": "CONTRACT_SCAN_PATH_ERROR",
+                    "severity": "high",
+                    "message": str(exc),
+                    "path": line,
+                }
+            )
 
     return {
-        "certificate_path": cert_path,
-        "subject": data.get("subject") or data.get("certificate_subject"),
-        "issuer": data.get("issuer") or data.get("certificate_issuer"),
-        "not_after": data.get("not_after") or data.get("expires_at") or data.get("expiry_date"),
-        "days_remaining": data.get("days_remaining"),
-        "severity": data.get("severity"),
-        "finding_code": data.get("code") or data.get("finding_code") or data.get("id"),
+        "mode": "multi-path",
+        "input": input_file,
+        "paths": scanned_paths,
+        "findings": findings,
     }
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cryptologik")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="command")
 
-    cert_parser = subparsers.add_parser("cert-expiry", help="Check certificate expiry risk")
-    cert_parser.add_argument("--cert", required=True, help="Path to certificate file")
-    cert_parser.add_argument("--warn-days", type=int, default=30, help="Warning threshold in days")
-    cert_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON findings")
+    contract = sub.add_parser("contract-scan")
+    contract.add_argument("--path", help="Path to Solidity file")
+    contract.add_argument(
+        "--input",
+        help="Path to text file containing one Solidity file path per line",
+    )
 
     return parser
 
 
-def _run_cert_expiry(args: argparse.Namespace) -> int:
-    findings = analyze_certificate_expiry(args.cert, warn_days=args.warn_days)
-
-    if args.json:
-        payload = [_finding_to_json(f, args.cert) for f in findings]
-        payload = sorted(
-            payload,
-            key=lambda x: (
-                str(x.get("severity") or ""),
-                str(x.get("finding_code") or ""),
-                str(x.get("not_after") or ""),
-                str(x.get("subject") or ""),
-            ),
-        )
-        print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
-        return 0
-
-    # Preserve existing human-readable behavior fallback.
-    for f in findings:
-        print(f)
-    return 0
-
-
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    if args.command == "cert-expiry":
-        return _run_cert_expiry(args)
+    if args.command == "contract-scan":
+        if args.input:
+            _emit(_scan_from_input_list(args.input))
+            return 0
+        if args.path:
+            _emit(_scan_single(args.path))
+            return 0
+        parser.error("contract-scan requires --path or --input")
 
-    return 0
+    parser.print_help()
+    return 1
 
 
 if __name__ == "__main__":
