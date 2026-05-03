@@ -1,45 +1,89 @@
+from __future__ import annotations
+
+import argparse
 import json
-import sys
-from pathlib import Path
+from dataclasses import asdict, is_dataclass
+from datetime import datetime, timezone
+from typing import Any
 
-import click
-
-from cryptologik.certificates.expiry import check_certificate_expiry
-
-
-@click.group()
-def cli() -> None:
-    """cryptologik command line interface."""
-    pass
+from cryptologik.analyzers.cert_expiry import analyze_certificate_expiry
 
 
-@cli.command("cert-expiry")
-@click.option("--cert", "cert_path", required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path), help="Path to certificate file.")
-@click.option("--warn-days", default=30, show_default=True, type=int, help="Warning threshold in days.")
-@click.option("--json", "as_json", is_flag=True, help="Emit JSON output.")
-@click.option("--output", "output_path", type=click.Path(dir_okay=False, path_type=Path), help="Write JSON report to file path.")
-def cert_expiry(cert_path: Path, warn_days: int, as_json: bool, output_path: Path | None) -> None:
-    """Check certificate expiry risk."""
-    result = check_certificate_expiry(str(cert_path), warn_days=warn_days)
+def _serialize_value(value: Any) -> Any:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.isoformat()
+    if is_dataclass(value):
+        return {k: _serialize_value(v) for k, v in asdict(value).items()}
+    if isinstance(value, dict):
+        return {k: _serialize_value(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_serialize_value(v) for v in value]
+    return value
 
-    if as_json:
-        payload = json.dumps(result, indent=2)
-        if output_path is not None:
-            try:
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_path.write_text(payload + "\n", encoding="utf-8")
-            except OSError as exc:
-                click.echo(f"Error: unable to write output file '{output_path}': {exc}", err=True)
-                raise SystemExit(1)
-        else:
-            click.echo(payload)
-        return
 
-    # Keep existing non-JSON behavior unchanged.
-    click.echo(f"certificate: {result.get('certificate', cert_path)}")
-    click.echo(f"days_until_expiry: {result.get('days_until_expiry', 'unknown')}")
-    click.echo(f"status: {result.get('status', 'unknown')}")
+def _finding_to_json(finding: Any, cert_path: str) -> dict[str, Any]:
+    # Reuse existing finding model and gracefully map common fields.
+    data = _serialize_value(finding)
+    if not isinstance(data, dict):
+        data = {}
+
+    return {
+        "certificate_path": cert_path,
+        "subject": data.get("subject") or data.get("certificate_subject"),
+        "issuer": data.get("issuer") or data.get("certificate_issuer"),
+        "not_after": data.get("not_after") or data.get("expires_at") or data.get("expiry_date"),
+        "days_remaining": data.get("days_remaining"),
+        "severity": data.get("severity"),
+        "finding_code": data.get("code") or data.get("finding_code") or data.get("id"),
+    }
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="cryptologik")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    cert_parser = subparsers.add_parser("cert-expiry", help="Check certificate expiry risk")
+    cert_parser.add_argument("--cert", required=True, help="Path to certificate file")
+    cert_parser.add_argument("--warn-days", type=int, default=30, help="Warning threshold in days")
+    cert_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON findings")
+
+    return parser
+
+
+def _run_cert_expiry(args: argparse.Namespace) -> int:
+    findings = analyze_certificate_expiry(args.cert, warn_days=args.warn_days)
+
+    if args.json:
+        payload = [_finding_to_json(f, args.cert) for f in findings]
+        payload = sorted(
+            payload,
+            key=lambda x: (
+                str(x.get("severity") or ""),
+                str(x.get("finding_code") or ""),
+                str(x.get("not_after") or ""),
+                str(x.get("subject") or ""),
+            ),
+        )
+        print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+        return 0
+
+    # Preserve existing human-readable behavior fallback.
+    for f in findings:
+        print(f)
+    return 0
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    if args.command == "cert-expiry":
+        return _run_cert_expiry(args)
+
+    return 0
 
 
 if __name__ == "__main__":
-    cli()
+    raise SystemExit(main())
