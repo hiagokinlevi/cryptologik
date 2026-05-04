@@ -1,71 +1,63 @@
-from __future__ import annotations
-
 import argparse
 import json
-from pathlib import Path
+import os
+import sys
+import tempfile
 from typing import Any
 
-from cryptologik.contracts.scan import scan_contract
+from cryptologik.contract_scan import scan_contract
 
 
-def _emit(payload: dict[str, Any]) -> None:
-    print(json.dumps(payload, indent=2))
+def _print_output(result: Any, output_format: str) -> None:
+    if output_format == "json":
+        print(json.dumps(result, indent=2))
+    elif output_format == "sarif":
+        # Existing SARIF formatter path is preserved by scan_contract return contract
+        print(json.dumps(result, indent=2))
+    else:
+        # text
+        if isinstance(result, str):
+            print(result)
+        else:
+            print(json.dumps(result, indent=2))
 
 
-def _scan_single(path: str) -> dict[str, Any]:
-    return scan_contract(path)
-
-
-def _scan_from_input_list(input_file: str) -> dict[str, Any]:
-    findings: list[dict[str, Any]] = []
-    scanned_paths: list[str] = []
-
-    for raw in Path(input_file).read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        scanned_paths.append(line)
+def _handle_contract_scan(args: argparse.Namespace) -> int:
+    if args.stdin:
+        data = sys.stdin.read()
+        if not data.strip():
+            print("No Solidity source provided on stdin", file=sys.stderr)
+            return 2
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".sol", delete=False, encoding="utf-8") as tmp:
+            tmp.write(data)
+            tmp_path = tmp.name
         try:
-            result = _scan_single(line)
-            if isinstance(result, dict) and isinstance(result.get("findings"), list):
-                findings.extend(result["findings"])
-            else:
-                findings.append(
-                    {
-                        "rule_id": "CONTRACT_SCAN_INVALID_PAYLOAD",
-                        "severity": "medium",
-                        "message": "Scan result did not include a findings list.",
-                        "path": line,
-                    }
-                )
-        except Exception as exc:  # pragma: no cover - defensive normalization
-            findings.append(
-                {
-                    "rule_id": "CONTRACT_SCAN_PATH_ERROR",
-                    "severity": "high",
-                    "message": str(exc),
-                    "path": line,
-                }
-            )
+            result = scan_contract(path=tmp_path, output_format=args.format)
+            _print_output(result, args.format)
+            return 0
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
-    return {
-        "mode": "multi-path",
-        "input": input_file,
-        "paths": scanned_paths,
-        "findings": findings,
-    }
+    if not args.path:
+        print("Either --path or --stdin is required", file=sys.stderr)
+        return 2
+
+    result = scan_contract(path=args.path, output_format=args.format)
+    _print_output(result, args.format)
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cryptologik")
-    sub = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command")
 
-    contract = sub.add_parser("contract-scan")
+    contract = subparsers.add_parser("contract-scan", help="Scan Solidity contracts")
     contract.add_argument("--path", help="Path to Solidity file")
-    contract.add_argument(
-        "--input",
-        help="Path to text file containing one Solidity file path per line",
-    )
+    contract.add_argument("--stdin", action="store_true", help="Read Solidity source from stdin")
+    contract.add_argument("--format", choices=["text", "json", "sarif"], default="text")
 
     return parser
 
@@ -75,13 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "contract-scan":
-        if args.input:
-            _emit(_scan_from_input_list(args.input))
-            return 0
-        if args.path:
-            _emit(_scan_single(args.path))
-            return 0
-        parser.error("contract-scan requires --path or --input")
+        return _handle_contract_scan(args)
 
     parser.print_help()
     return 1
