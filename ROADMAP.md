@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `contract-scan --stdin` to scan Solidity source from piped input (cycle 50)
+- [x] Add `contract-scan --stdin --language` selector with default `solidity` (cycle 51)
