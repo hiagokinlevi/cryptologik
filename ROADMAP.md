@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `contract-scan --input` support for newline-delimited Solidity file lists (cycle 49)
+- [x] Add `contract-scan --stdin` to scan Solidity source from piped input (cycle 50)
