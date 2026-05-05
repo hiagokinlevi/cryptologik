@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `contract-scan --fail-on` severity threshold exit control (cycle 52)
+- [x] Add `tls-check --input -` support to read TLS config from STDIN (cycle 53)
