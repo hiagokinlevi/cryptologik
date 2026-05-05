@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `contract-scan --stdin --language` selector with default `solidity` (cycle 51)
+- [x] Add `contract-scan --fail-on` severity threshold exit control (cycle 52)
