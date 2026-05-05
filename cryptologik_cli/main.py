@@ -3,58 +3,64 @@ import json
 import sys
 from pathlib import Path
 
-from cryptologik.contract_scan import scan_contract_source, scan_contract_file
+import yaml
+
+from cryptologik.tls import analyze_tls_config
 
 
-ALLOWED_CONTRACT_LANGUAGES = ("solidity",)
+def _load_tls_input(input_value: str):
+    if input_value == "-":
+        raw = sys.stdin.read()
+        if not raw or not raw.strip():
+            raise ValueError("No TLS configuration provided on STDIN")
+        try:
+            data = yaml.safe_load(raw)
+        except yaml.YAMLError as exc:
+            raise ValueError(f"Invalid YAML from STDIN: {exc}") from exc
+        if data is None:
+            raise ValueError("No TLS configuration provided on STDIN")
+        return data
+
+    input_path = Path(input_value)
+    if not input_path.exists():
+        raise FileNotFoundError(f"Input file not found: {input_value}")
+
+    with input_path.open("r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    if data is None:
+        raise ValueError(f"Input file is empty or invalid YAML: {input_value}")
+    return data
 
 
-def build_parser() -> argparse.ArgumentParser:
+def main(argv=None):
     parser = argparse.ArgumentParser(prog="cryptologik")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command")
 
-    contract_scan = subparsers.add_parser(
-        "contract-scan",
-        help="Scan smart contract source for security issues",
-    )
-    contract_scan.add_argument("--path", help="Path to smart contract source file")
-    contract_scan.add_argument(
-        "--stdin",
-        action="store_true",
-        help="Read smart contract source from stdin",
-    )
-    contract_scan.add_argument(
-        "--language",
-        default="solidity",
-        choices=ALLOWED_CONTRACT_LANGUAGES,
-        help="Language for --stdin source input (default: solidity)",
-    )
+    tls_parser = subparsers.add_parser("tls-check", help="Analyze TLS configuration")
+    tls_parser.add_argument("--input", required=True, help="Path to TLS YAML config, or '-' for STDIN")
+    tls_parser.add_argument("--format", choices=["json", "text"], default="text")
 
-    return parser
-
-
-def _run_contract_scan(args: argparse.Namespace) -> int:
-    if args.stdin:
-        source = sys.stdin.read()
-        result = scan_contract_source(source=source, language=args.language)
-    else:
-        if not args.path:
-            raise SystemExit("contract-scan requires --path when --stdin is not used")
-        result = scan_contract_file(Path(args.path))
-
-    print(json.dumps(result, indent=2))
-    return 0
-
-
-def main(argv=None) -> int:
-    parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command == "contract-scan":
-        return _run_contract_scan(args)
+    if args.command == "tls-check":
+        try:
+            config = _load_tls_input(args.input)
+            result = analyze_tls_config(config)
+        except Exception as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return 2
 
-    parser.error(f"Unknown command: {args.command}")
-    return 2
+        if args.format == "json":
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print("TLS check completed")
+            if isinstance(result, dict):
+                findings = result.get("findings", [])
+                print(f"Findings: {len(findings)}")
+        return 0
+
+    parser.print_help()
+    return 1
 
 
 if __name__ == "__main__":
