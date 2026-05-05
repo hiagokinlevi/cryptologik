@@ -43,6 +43,12 @@ cryptologik cert-expiry --cert examples/certs/leaf.pem --warn-days 30
 cryptologik contract-scan --path examples/contracts/SimpleVault.sol
 ```
 
+Fail CI when findings are at least `high` severity:
+
+```bash
+cryptologik contract-scan --path examples/contracts/SimpleVault.sol --fail-on high
+```
+
 ## Notes
 
 Use `--help` on any command for full options:
