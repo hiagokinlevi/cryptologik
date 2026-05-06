@@ -31,6 +31,14 @@ python -m pip install .
 cryptologik tls-check --input examples/tls/server.yaml
 ```
 
+Use a policy profile override (YAML/JSON):
+
+```bash
+cryptologik tls-check --input examples/tls/server.yaml --config policies/tls-policy.yaml
+```
+
+Policy precedence for `tls-check` is: `CLI flags > --config file > built-in defaults`.
+
 ### Certificate expiry check
 
 ```bash
