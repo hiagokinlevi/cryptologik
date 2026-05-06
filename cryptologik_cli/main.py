@@ -1,67 +1,106 @@
-import argparse
 import json
-import sys
 from pathlib import Path
 
+import click
 import yaml
 
-from cryptologik.tls import analyze_tls_config
+from cryptologik.tls import evaluate_tls_config, DEFAULT_TLS_POLICY
 
 
-def _load_tls_input(input_value: str):
-    if input_value == "-":
-        raw = sys.stdin.read()
-        if not raw or not raw.strip():
-            raise ValueError("No TLS configuration provided on STDIN")
-        try:
+ALLOWED_TLS_POLICY_KEYS = {
+    "minimum_tls_version": str,
+    "disallowed_ciphers": list,
+    "weak_signature_algorithms": list,
+    "minimum_key_sizes": dict,
+}
+
+
+def _load_policy_file(config_path: str) -> dict:
+    path = Path(config_path)
+    if not path.exists():
+        raise click.ClickException(f"Config file not found: {config_path}")
+
+    raw = path.read_text(encoding="utf-8")
+    try:
+        if path.suffix.lower() == ".json":
+            data = json.loads(raw)
+        else:
             data = yaml.safe_load(raw)
-        except yaml.YAMLError as exc:
-            raise ValueError(f"Invalid YAML from STDIN: {exc}") from exc
-        if data is None:
-            raise ValueError("No TLS configuration provided on STDIN")
-        return data
+    except Exception as exc:
+        raise click.ClickException(
+            f"Failed to parse policy config '{config_path}'. Expected valid YAML/JSON. Error: {exc}"
+        )
 
-    input_path = Path(input_value)
-    if not input_path.exists():
-        raise FileNotFoundError(f"Input file not found: {input_value}")
-
-    with input_path.open("r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
     if data is None:
-        raise ValueError(f"Input file is empty or invalid YAML: {input_value}")
+        return {}
+    if not isinstance(data, dict):
+        raise click.ClickException(
+            f"Invalid policy config '{config_path}': top-level object must be a mapping/object."
+        )
+
+    unknown = sorted(set(data.keys()) - set(ALLOWED_TLS_POLICY_KEYS.keys()))
+    if unknown:
+        raise click.ClickException(
+            "Invalid policy config key(s): "
+            + ", ".join(unknown)
+            + ". Allowed keys: "
+            + ", ".join(sorted(ALLOWED_TLS_POLICY_KEYS.keys()))
+        )
+
+    for key, expected in ALLOWED_TLS_POLICY_KEYS.items():
+        if key in data and not isinstance(data[key], expected):
+            raise click.ClickException(
+                f"Invalid policy config for '{key}': expected {expected.__name__}, got {type(data[key]).__name__}."
+            )
+
     return data
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(prog="cryptologik")
-    subparsers = parser.add_subparsers(dest="command")
+def _merge_tls_policy(defaults: dict, config_overrides: dict, cli_overrides: dict) -> dict:
+    policy = dict(defaults)
 
-    tls_parser = subparsers.add_parser("tls-check", help="Analyze TLS configuration")
-    tls_parser.add_argument("--input", required=True, help="Path to TLS YAML config, or '-' for STDIN")
-    tls_parser.add_argument("--format", choices=["json", "text"], default="text")
+    for source in (config_overrides or {}, cli_overrides or {}):
+        for k, v in source.items():
+            if v is None:
+                continue
+            if isinstance(policy.get(k), dict) and isinstance(v, dict):
+                merged = dict(policy[k])
+                merged.update(v)
+                policy[k] = merged
+            else:
+                policy[k] = v
 
-    args = parser.parse_args(argv)
+    return policy
 
-    if args.command == "tls-check":
-        try:
-            config = _load_tls_input(args.input)
-            result = analyze_tls_config(config)
-        except Exception as exc:
-            print(f"Error: {exc}", file=sys.stderr)
-            return 2
 
-        if args.format == "json":
-            print(json.dumps(result, indent=2, sort_keys=True))
-        else:
-            print("TLS check completed")
-            if isinstance(result, dict):
-                findings = result.get("findings", [])
-                print(f"Findings: {len(findings)}")
-        return 0
+@click.group()
+def cli():
+    pass
 
-    parser.print_help()
-    return 1
+
+@cli.command("tls-check")
+@click.option("--input", "input_path", required=True, help="Path to TLS server config YAML")
+@click.option(
+    "--config",
+    "policy_config",
+    required=False,
+    help="Optional YAML/JSON TLS policy profile to override defaults",
+)
+@click.option("--minimum-tls-version", required=False, help="Override minimum TLS version policy")
+def tls_check(input_path: str, policy_config: str, minimum_tls_version: str):
+    """Evaluate TLS posture from an input server config.
+
+    Policy precedence is deterministic: CLI flags > --config profile > built-in defaults.
+    """
+
+    config_overrides = _load_policy_file(policy_config) if policy_config else {}
+    cli_overrides = {"minimum_tls_version": minimum_tls_version} if minimum_tls_version else {}
+
+    policy = _merge_tls_policy(DEFAULT_TLS_POLICY, config_overrides, cli_overrides)
+
+    result = evaluate_tls_config(input_path=input_path, policy=policy)
+    click.echo(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    cli()
