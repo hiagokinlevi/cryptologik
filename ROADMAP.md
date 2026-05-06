@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `tls-check --input -` support to read TLS config from STDIN (cycle 53)
+- [x] Add `tls-check --config` support for policy profile overrides (cycle 54)
