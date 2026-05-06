@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `tls-check --config` support for policy profile overrides (cycle 54)
+- [x] Add `tls-check --fail-on` severity threshold exit control (cycle 55)
