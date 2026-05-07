@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `tls-check --fail-on` severity threshold exit control (cycle 55)
+- [x] Add `contract-scan --output` support for plaintext findings (cycle 56)
