@@ -6,23 +6,37 @@ from click.testing import CliRunner
 from cryptologik_cli.main import cli
 
 
-def test_contract_scan_json_output_shape_and_non_empty():
-    runner = CliRunner()
-    sample = Path("examples/contracts/SimpleVault.sol")
+def test_contract_scan_json_writes_output_file(tmp_path: Path, monkeypatch) -> None:
+    contract_file = tmp_path / "Simple.sol"
+    contract_file.write_text("contract Simple {}", encoding="utf-8")
 
-    result = runner.invoke(cli, ["contract-scan", "--path", str(sample), "--json"])
+    findings = [
+        {"id": "SWC-000", "title": "Sample finding", "severity": "low"},
+    ]
+
+    def _fake_scan_contract(_path: str):
+        return findings
+
+    monkeypatch.setattr("cryptologik_cli.main.scan_contract", _fake_scan_contract)
+
+    output_file = tmp_path / "nested" / "results" / "scan.json"
+    runner = CliRunner()
+
+    result = runner.invoke(
+        cli,
+        [
+            "contract-scan",
+            "--path",
+            str(contract_file),
+            "--format",
+            "json",
+            "--output",
+            str(output_file),
+        ],
+    )
 
     assert result.exit_code == 0, result.output
-    data = json.loads(result.output)
+    assert output_file.exists()
 
-    assert "findings" in data
-    assert isinstance(data["findings"], list)
-    assert len(data["findings"]) > 0
-
-    first = data["findings"][0]
-    for key in ["rule_id", "severity", "file", "line", "message", "recommendation"]:
-        assert key in first
-
-    assert "summary" in data
-    assert data["summary"]["total"] == len(data["findings"])
-    assert isinstance(data["summary"].get("by_severity"), dict)
+    data = json.loads(output_file.read_text(encoding="utf-8"))
+    assert data == {"findings": findings}
