@@ -44,4 +44,4 @@
 - [ ] Protocol security review engine for
 
 ## Automated Completions
-- [x] Add `contract-scan --output` support for plaintext findings (cycle 56)
+- [x] Add `contract-scan --format sarif|json|text` unified output selector (cycle 57)
