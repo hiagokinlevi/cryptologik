@@ -1,104 +1,70 @@
+from __future__ import annotations
+
 import json
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Optional
 
-import click
+import typer
 
+from cryptologik.contracts.scanner import scan_contract_path
+from cryptologik.contracts.severity import should_fail_for_threshold
+from cryptologik.contracts.text import render_findings_text
+from cryptologik.contracts.sarif import findings_to_sarif
 
-def _severity_to_level(severity: Optional[str]) -> str:
-    s = (severity or "").strip().lower()
-    if s in {"critical", "high", "error"}:
-        return "error"
-    if s in {"medium", "warning", "warn"}:
-        return "warning"
-    return "note"
-
-
-def _format_contract_findings_as_sarif(findings: List[Dict[str, Any]]) -> Dict[str, Any]:
-    results: List[Dict[str, Any]] = []
-    rules_index: Dict[str, Dict[str, Any]] = {}
-
-    for f in findings:
-      rule_id = str(f.get("rule_id") or f.get("id") or "CONTRACT-FINDING")
-      message = str(f.get("message") or f.get("description") or "Contract finding")
-      severity = f.get("severity")
-      level = _severity_to_level(severity)
-
-      if rule_id not in rules_index:
-          rules_index[rule_id] = {
-              "id": rule_id,
-              "shortDescription": {"text": rule_id},
-          }
-
-      result: Dict[str, Any] = {
-          "ruleId": rule_id,
-          "level": level,
-          "message": {"text": message},
-      }
-
-      file_path = f.get("file") or f.get("path")
-      line = f.get("line")
-      if file_path:
-          region: Dict[str, Any] = {}
-          if isinstance(line, int) and line > 0:
-              region["startLine"] = line
-          result["locations"] = [
-              {
-                  "physicalLocation": {
-                      "artifactLocation": {"uri": str(file_path)},
-                      **({"region": region} if region else {}),
-                  }
-              }
-          ]
-
-      results.append(result)
-
-    return {
-        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
-        "version": "2.1.0",
-        "runs": [
-            {
-                "tool": {
-                    "driver": {
-                        "name": "cryptologik-contract-scan",
-                        "informationUri": "https://sarifweb.azurewebsites.net/",
-                        "rules": list(rules_index.values()),
-                    }
-                },
-                "results": results,
-            }
-        ],
-    }
+app = typer.Typer(help="Scan smart contracts for common security issues.")
 
 
-@click.command("contract-scan")
-@click.option("--path", "path_", required=True, type=click.Path(exists=True))
-@click.option("--format", "output_format", type=click.Choice(["text", "json", "sarif"]), default="text", show_default=True)
-def contract_scan(path_: str, output_format: str) -> None:
-    """Scan a Solidity smart contract for security findings."""
-    # Local import to keep command startup fast and preserve existing architecture.
-    from cryptologik.blockchain.contract_scanner import scan_contract
-
-    findings = scan_contract(path_)
-
-    if output_format == "json":
-        click.echo(json.dumps(findings, indent=2))
+def _write_output(content: str, output_path: Optional[Path]) -> None:
+    if output_path is None:
+        typer.echo(content)
         return
 
-    if output_format == "sarif":
-        click.echo(json.dumps(_format_contract_findings_as_sarif(findings), indent=2))
-        return
+    if output_path.exists():
+        raise typer.BadParameter(
+            f"Refusing to overwrite existing file: {output_path}",
+            param_hint="--output",
+        )
 
-    if not findings:
-        click.echo("No contract findings.")
-        return
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(content, encoding="utf-8")
+    except OSError as exc:
+        raise typer.BadParameter(
+            f"Failed to write output file '{output_path}': {exc}",
+            param_hint="--output",
+        ) from exc
 
-    for f in findings:
-        rid = f.get("rule_id") or f.get("id") or "CONTRACT-FINDING"
-        sev = (f.get("severity") or "unknown").upper()
-        msg = f.get("message") or f.get("description") or "Contract finding"
-        loc_file = f.get("file") or f.get("path")
-        loc_line = f.get("line")
-        loc = ""
-        if loc_file:
-            loc = f" ({loc_file}{':' + str(loc_line) if isinstance(loc_line, int) else ''})"
-        click.echo(f"[{sev}] {rid}: {msg}{loc}")
+
+@app.command("contract-scan")
+def contract_scan(
+    path: Path = typer.Option(..., "--path", help="Path to Solidity file or directory."),
+    fail_on: str = typer.Option(
+        "none",
+        "--fail-on",
+        help="Fail when findings meet/exceed severity: none|low|medium|high|critical",
+    ),
+    format: str = typer.Option(
+        "text",
+        "--format",
+        help="Output format: text|json|sarif",
+    ),
+    output: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        help="Write scan output to a file. For text format, this writes the human-readable findings.",
+    ),
+) -> None:
+    findings = scan_contract_path(path)
+
+    fmt = format.lower()
+    if fmt == "json":
+        rendered = json.dumps([f.model_dump() for f in findings], indent=2)
+    elif fmt == "sarif":
+        rendered = json.dumps(findings_to_sarif(findings, str(path)), indent=2)
+    else:
+        rendered = render_findings_text(findings)
+
+    _write_output(rendered, output)
+
+    if should_fail_for_threshold(findings, fail_on):
+        raise typer.Exit(code=1)
