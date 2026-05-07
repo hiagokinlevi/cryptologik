@@ -1,79 +1,46 @@
 from __future__ import annotations
 
-import argparse
 import json
 import sys
-from typing import Any
+from pathlib import Path
+
+import click
 
 from cryptologik.contract_scan import scan_contract
-from cryptologik.reporters import render_text_report, render_json_report, render_sarif_report
 
 
-ALLOWED_CONTRACT_SCAN_FORMATS = {"text", "json", "sarif"}
+@click.group()
+def cli() -> None:
+    """cryptologik CLI."""
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="cryptologik")
-    subparsers = parser.add_subparsers(dest="command")
+@cli.command("contract-scan")
+@click.option("--path", "contract_path", required=True, help="Path to smart contract source file")
+@click.option("--format", "output_format", type=click.Choice(["text", "json"], case_sensitive=False), default="text", show_default=True, help="Output format")
+@click.option("--output", "output_path", required=False, help="Write JSON findings to a file (supported with --format json)")
+def contract_scan_cmd(contract_path: str, output_format: str, output_path: str | None) -> None:
+    findings = scan_contract(contract_path)
 
-    contract_scan = subparsers.add_parser("contract-scan", help="Scan smart contracts for security issues")
-    contract_scan.add_argument("--path", required=True, help="Path to contract source")
-    contract_scan.add_argument(
-        "--format",
-        default="text",
-        help="Output format for findings: text|json|sarif (default: text)",
-    )
-    # Backward-compatible legacy flags
-    contract_scan.add_argument("--json", action="store_true", dest="legacy_json", help=argparse.SUPPRESS)
-    contract_scan.add_argument("--sarif", action="store_true", dest="legacy_sarif", help=argparse.SUPPRESS)
+    if output_format.lower() == "json":
+        payload = {"findings": findings}
+        rendered = json.dumps(payload, indent=2)
 
-    return parser
+        if output_path:
+            out = Path(output_path)
+            try:
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_text(rendered + "\n", encoding="utf-8")
+            except OSError as exc:
+                click.echo(f"Error: failed to write JSON findings to '{output_path}': {exc}", err=True)
+                raise SystemExit(2)
+        else:
+            click.echo(rendered)
+        return
 
-
-def _resolve_contract_scan_format(args: argparse.Namespace) -> str:
-    fmt = (args.format or "text").lower()
-
-    # Backward compatibility: legacy mode-specific flags still work.
-    # Explicit --format takes precedence if provided.
-    if "--format" not in sys.argv:
-        if getattr(args, "legacy_sarif", False):
-            fmt = "sarif"
-        elif getattr(args, "legacy_json", False):
-            fmt = "json"
-
-    if fmt not in ALLOWED_CONTRACT_SCAN_FORMATS:
-        raise ValueError("Invalid --format value. Allowed values: sarif, json, text")
-
-    return fmt
-
-
-def _run_contract_scan(args: argparse.Namespace) -> int:
-    findings: list[dict[str, Any]] = scan_contract(args.path)
-    fmt = _resolve_contract_scan_format(args)
-
-    if fmt == "json":
-        print(render_json_report(findings))
-    elif fmt == "sarif":
-        print(render_sarif_report(findings))
-    else:
-        print(render_text_report(findings))
-
-    return 0
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-
-    if args.command == "contract-scan":
-        try:
-            return _run_contract_scan(args)
-        except ValueError as exc:
-            parser.error(str(exc))
-
-    parser.print_help()
-    return 1
+    # text mode (existing behavior)
+    for item in findings:
+        click.echo(f"[{item.get('severity', 'unknown').upper()}] {item.get('title', 'Untitled')}")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    cli()
