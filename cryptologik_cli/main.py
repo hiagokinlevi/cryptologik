@@ -1,81 +1,79 @@
+from __future__ import annotations
+
 import argparse
 import json
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from cryptologik.tls import run_tls_check
-from cryptologik.contracts import run_contract_scan
-
-SEVERITY_ORDER = {
-    "low": 1,
-    "medium": 2,
-    "high": 3,
-    "critical": 4,
-}
+from cryptologik.contract_scan import scan_contract
+from cryptologik.reporters import render_text_report, render_json_report, render_sarif_report
 
 
-def _max_finding_severity(findings: List[Dict[str, Any]]) -> Optional[str]:
-    max_level = 0
-    max_name: Optional[str] = None
-    for finding in findings or []:
-        sev = str(finding.get("severity", "")).lower()
-        level = SEVERITY_ORDER.get(sev, 0)
-        if level > max_level:
-            max_level = level
-            max_name = sev
-    return max_name
-
-
-def _should_fail_on_threshold(findings: List[Dict[str, Any]], fail_on: Optional[str]) -> bool:
-    if not fail_on:
-        return False
-    threshold = SEVERITY_ORDER[fail_on]
-    for finding in findings or []:
-        sev = str(finding.get("severity", "")).lower()
-        if SEVERITY_ORDER.get(sev, 0) >= threshold:
-            return True
-    return False
+ALLOWED_CONTRACT_SCAN_FORMATS = {"text", "json", "sarif"}
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cryptologik")
-    sub = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command")
 
-    tls = sub.add_parser("tls-check")
-    tls.add_argument("--input", required=True)
-    tls.add_argument("--config", required=False)
-    tls.add_argument("--fail-on", choices=["low", "medium", "high", "critical"], required=False)
-
-    contract = sub.add_parser("contract-scan")
-    contract.add_argument("--path", required=True)
-    contract.add_argument("--fail-on", choices=["low", "medium", "high", "critical"], required=False)
+    contract_scan = subparsers.add_parser("contract-scan", help="Scan smart contracts for security issues")
+    contract_scan.add_argument("--path", required=True, help="Path to contract source")
+    contract_scan.add_argument(
+        "--format",
+        default="text",
+        help="Output format for findings: text|json|sarif (default: text)",
+    )
+    # Backward-compatible legacy flags
+    contract_scan.add_argument("--json", action="store_true", dest="legacy_json", help=argparse.SUPPRESS)
+    contract_scan.add_argument("--sarif", action="store_true", dest="legacy_sarif", help=argparse.SUPPRESS)
 
     return parser
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def _resolve_contract_scan_format(args: argparse.Namespace) -> str:
+    fmt = (args.format or "text").lower()
+
+    # Backward compatibility: legacy mode-specific flags still work.
+    # Explicit --format takes precedence if provided.
+    if "--format" not in sys.argv:
+        if getattr(args, "legacy_sarif", False):
+            fmt = "sarif"
+        elif getattr(args, "legacy_json", False):
+            fmt = "json"
+
+    if fmt not in ALLOWED_CONTRACT_SCAN_FORMATS:
+        raise ValueError("Invalid --format value. Allowed values: sarif, json, text")
+
+    return fmt
+
+
+def _run_contract_scan(args: argparse.Namespace) -> int:
+    findings: list[dict[str, Any]] = scan_contract(args.path)
+    fmt = _resolve_contract_scan_format(args)
+
+    if fmt == "json":
+        print(render_json_report(findings))
+    elif fmt == "sarif":
+        print(render_sarif_report(findings))
+    else:
+        print(render_text_report(findings))
+
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.command == "tls-check":
-        result = run_tls_check(input_path=args.input, config_path=args.config)
-        print(json.dumps(result))
-        findings = result.get("findings", []) if isinstance(result, dict) else []
-        if _should_fail_on_threshold(findings, args.fail_on):
-            return 1
-        return 0
-
     if args.command == "contract-scan":
-        result = run_contract_scan(path=args.path)
-        print(json.dumps(result))
-        findings = result.get("findings", []) if isinstance(result, dict) else []
-        if _should_fail_on_threshold(findings, args.fail_on):
-            return 1
-        return 0
+        try:
+            return _run_contract_scan(args)
+        except ValueError as exc:
+            parser.error(str(exc))
 
     parser.print_help()
-    return 2
+    return 1
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
